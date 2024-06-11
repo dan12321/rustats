@@ -1,0 +1,6 @@
+[workspace]
+members = ["stats"]
+
+[workspace.package]
+name = "rustats"
+version = "0.1.0"
