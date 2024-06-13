@@ -23,8 +23,8 @@ impl<const ROWS: usize, const COLS: usize> Matrix<ROWS, COLS> {
             let row = ij / M;
             let mut value = 0.0;
             for i in 0..COLS {
-                let a = self.elements[row * COLS + i];
-                let b = matrix.elements[i * M + column];
+                let a = self.get_unchecked(row, i);
+                let b = matrix.get_unchecked(i, column);
                 value += a * b;
             }
 
@@ -71,7 +71,7 @@ impl<const ROWS: usize, const COLS: usize> Matrix<ROWS, COLS> {
         }
         let mut elements: Vec<f64> = Vec::with_capacity(ROWS);
         for j in 0..ROWS {
-            elements.push(self.elements[j * COLS + i]);
+            elements.push(self.get_unchecked(j, i));
         }
         Ok(Vector::<ROWS> {
             elements
@@ -84,7 +84,7 @@ impl<const ROWS: usize, const COLS: usize> Matrix<ROWS, COLS> {
         }
 
         for j in 0..ROWS {
-            self.elements[j * COLS + i] = column.elements[j];
+            self.set_unchecked(j, i, column.get_unchecked(j, 0));
         }
 
         Ok(())
@@ -94,16 +94,24 @@ impl<const ROWS: usize, const COLS: usize> Matrix<ROWS, COLS> {
         if row >= ROWS || col >= COLS {
             Err(MatrixError::OutOfBounds)
         } else {
-            self.elements[row * COLS + col] = value;
+            self.set_unchecked(row, col, value);
             Ok(())
         }
+    }
+
+    pub fn set_unchecked(&mut self, row: usize, col: usize, value: f64) {
+        self.elements[row * COLS + col] = value;
+    }
+
+    pub fn get_unchecked(&self, row: usize, col: usize) -> f64 {
+        self.elements[row * COLS + col]
     }
 
     pub fn transpose(&self) -> Matrix<COLS, ROWS> {
         let mut elements: Vec<f64> = Vec::with_capacity(ROWS * COLS);
         for i in 0..COLS {
             for j in 0..ROWS {
-                elements.push(self.elements[j * COLS + i]);
+                elements.push(self.get_unchecked(j, i));
             }
         }
         Matrix::<COLS, ROWS> {
@@ -160,8 +168,41 @@ impl<const N: usize> Matrix<N, N> {
         }
     }
 
-    pub fn eigan(&self) {
-        panic!("eigan not implemented")
+    /// Compute the eigen values of a matrix using the qr algorithm.
+    ///
+    /// `threshold`: how close the lower triangle should be to 0.
+    /// `max_iter`: maximum number of iterations
+    pub fn eigen_values(&self, threshold: f64, max_iter: usize) -> Vector<N> {
+        let mut a = self.clone();
+        for _ in 0..max_iter {
+            let QR { q, r } = a.qr_decomp();
+            a = r.mul(&q);
+            if a.non_upper_triangle_within_threshold(threshold) {
+                break;
+            }
+        }
+        a.get_diagonal()
+    }
+
+    fn get_diagonal(&self) -> Vector<N> {
+        let mut elements = Vec::with_capacity(N);
+        for i in 0..N {
+            elements.push(self.get_unchecked(i, i));
+        }
+        Vector::<N> {
+            elements,
+        }
+    }
+
+    fn non_upper_triangle_within_threshold(&self, threshold: f64) -> bool {
+        for i in 0..N {
+            for j in i+1..N {
+                if self.get_unchecked(j, i).abs() > threshold {
+                    return false;
+                }
+            }
+        }
+        true
     }
 }
 
@@ -302,5 +343,18 @@ mod tests {
         // error messages
         assert_eq!(result.q.round(3), expected_q);
         assert_eq!(result.r.round(3), expected_r);
+    }
+
+    #[test]
+    fn test_eigen_values() {
+        let a = Matrix::<2,2>::new(vec![
+            1.0, 2.0,
+            3.0, 4.0,
+        ]).unwrap();
+
+        let result = a.eigen_values(0.01, 5).round(3);
+
+        let expected_result = vec![5.372, -0.372];
+        assert_eq!(result.elements, expected_result);
     }
 }
