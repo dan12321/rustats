@@ -128,6 +128,18 @@ impl<const ROWS: usize, const COLS: usize> Matrix<ROWS, COLS> {
             elements
         }
     }
+
+    pub fn mean_row(&self) -> Vector<COLS> {
+        let mut elements = vec![0.0;COLS];
+        for i in 0..ROWS {
+            for j in 0..COLS {
+                elements[j] += self.get_unchecked(i, j) / ROWS as f64;
+            }
+        }
+        Vector::<COLS> {
+            elements,
+        }
+    }
 }
 
 impl<const N: usize> Matrix<N, N> {
@@ -356,5 +368,22 @@ mod tests {
 
         let expected_result = vec![5.372, -0.372];
         assert_eq!(result.elements, expected_result);
+    }
+
+    #[test]
+    fn test_mean_row() {
+        let a = Matrix::<3,2>::new(vec![
+            1.0, 2.0,
+            3.0, 4.0,
+            5.0, 9.0,
+        ]).unwrap();
+
+        let result = a.mean_row();
+
+        let expected_result = Vector::<2>::new(vec![
+            3.0, 5.0,
+        ]).unwrap();
+
+        assert_eq!(result, expected_result);
     }
 }
