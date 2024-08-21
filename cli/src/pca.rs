@@ -1,51 +1,51 @@
-use std::{
-    fs::{read, OpenOptions},
-    io::{self, BufRead, BufReader}};
+use std::{io::BufRead, path::PathBuf};
 
-use crate::DataType;
+use clap::Args;
 
-use super::PcaArgs;
+use crate::util::{self, DataType};
+
+/// Principal component analysis
+#[derive(Debug, Args)]
+#[command(version, about, long_about = None)]
+pub struct PcaArgs {
+    /// The format of the file
+    #[arg(value_enum, short, long)]
+    datatype: Option<DataType>,
+    /// File containing data
+    filename: Option<PathBuf>,
+}
 
 pub fn pca_main(args: PcaArgs) {
-    let reader: Box<dyn BufRead> = if let Some(filename) = &args.filename {
-        let mut file = OpenOptions::new()
-            .read(true)
-            .open(filename);
-
-        let file = match file {
-            Ok(f) => f,
-            Err(e) => {
-                println!(
-                    "Could not read file {} due to error: {}",
-                    filename.to_string_lossy(),
-                    e.to_string()
-                );
-                return;
-            },
-        };
-        Box::new(BufReader::new(file))
-    } else {
-        let stdin = io::stdin();
-        Box::new(BufReader::new(stdin))
+    let reader: Box<dyn BufRead> = match util::get_buff_reader(&args.filename) {
+        Ok(br) => br,
+        Err(e) => {
+            eprintln!(
+                "Could not read file due to error: {}",
+                e.to_string()
+            );
+            return;
+        }
     };
 
-    match args.datatype {
-        DataType::Discover => {
-            if let Some(filename) = &args.filename {
-                if let Some(ext) = filename.extension() {
-                    println!("{:?}", ext);
-                } else {
-                    println!(
-                        "No file extension on {} --datatype must be provided",
-                        filename.to_string_lossy(),
-                    );
+    let datatype = if let Some(d) = args.datatype {
+        d
+    } else {
+        if let Some(f) = args.filename {
+            match util::DataType::from_filename(&f) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("{}", e);
                     return;
-                }
-            } else {
-                println!("No file extension --datatype must be provided");
-                return;
+                },
             }
-        },
+        } else {
+            eprintln!("No file provided. --datatype must be specified");
+            return;
+        }
+    };
+
+    match datatype {
         DataType::CSV => {},
     }
 }
+

@@ -1,2 +1,3 @@
-mod pca;
-mod linalg;
+pub mod pca;
+pub mod linalg;
+pub mod table;
