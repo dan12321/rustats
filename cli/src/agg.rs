@@ -64,47 +64,27 @@ pub fn agg_main(args: AggArgs) {
         }
     };
 
-    match args.group_by {
+    let agg = match args.group_by {
         Some(group_by) => {
             let aggs = table.group_num_agg(&args.column, &group_by);
-            let aggs = match aggs {
+            match aggs {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!("Error calculating aggregate data: {}", e);
                     return;
                 }
-            };
-            println!("{},min,max,mean,sum,stddev", group_by);
-            for (group, agg) in aggs {
-                println!(
-                    "{},{},{},{},{},{}",
-                    group,
-                    agg.min.1,
-                    agg.max.1,
-                    agg.mean,
-                    agg.sum,
-                    agg.stddev,
-                );
             }
         },
         None => {
             let agg = table.num_agg(&args.column);
-            let agg = match agg {
+            match agg {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!("Error calculating aggregate data: {}", e);
                     return;
                 }
-            };
-            println!("min,max,mean,sum,stddev");
-            println!(
-                "{},{},{},{},{}",
-                agg.min.1,
-                agg.max.1,
-                agg.mean,
-                agg.sum,
-                agg.stddev,
-            );
+            }
         },
-    }
+    };
+    println!("{}", agg.to_csv(&args.csv_delim));
 }

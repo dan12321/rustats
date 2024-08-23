@@ -6,17 +6,11 @@ use anyhow::{Context, Result};
 pub struct Table {
     headers: Vec<String>,
     col_types: Vec<ColType>,
-    numerics: Vec<Column<f64>>,
-    strings: Vec<Column<String>>,
+    numerics: Vec<Vec<f64>>,
+    strings: Vec<Vec<String>>,
     col_to_numeric: Vec<Option<usize>>,
     col_to_string: Vec<Option<usize>>,
     len: usize,
-}
-
-#[derive(Debug)]
-pub struct Column<T> {
-    name: String,
-    entries: Vec<T>,
 }
 
 #[derive(Debug)]
@@ -52,18 +46,15 @@ impl Table {
             return Err(TableParserError::LineSizeConflict(1)).context(context);
         }
         let mut col_types = Vec::<ColType>::with_capacity(headers.len());
-        let mut numerics = Vec::<Column<f64>>::with_capacity(headers.len());
-        let mut strings = Vec::<Column<String>>::with_capacity(headers.len());
+        let mut numerics = Vec::<Vec<f64>>::with_capacity(headers.len());
+        let mut strings = Vec::<Vec<String>>::with_capacity(headers.len());
         let mut col_to_numeric = Vec::<Option<usize>>::with_capacity(headers.len());
         let mut col_to_string = Vec::<Option<usize>>::with_capacity(headers.len());
         for i in 0..first_entries.len() {
             let num = first_entries[i].parse::<f64>();
             if let Ok(n) = num {
                 col_types.push(ColType::Numeric);
-                let column = Column::<f64> {
-                    name: headers[i].clone(),
-                    entries: vec![n],
-                };
+                let column = vec![n];
                 let index = numerics.len();
                 col_to_numeric.push(Some(index));
                 col_to_string.push(None);
@@ -71,10 +62,7 @@ impl Table {
             } else {
                 col_types.push(ColType::String);
                 let value = first_entries[i].to_string();
-                let column = Column::<String> {
-                    name: headers[i].clone(),
-                    entries: vec![value],
-                };
+                let column = vec![value];
                 let index = strings.len();
                 col_to_numeric.push(None);
                 col_to_string.push(Some(index));
@@ -103,11 +91,11 @@ impl Table {
                             ))
                             .context(context)?;
                         let num_col: usize = col_to_numeric[i].unwrap();
-                        numerics[num_col].entries.push(value);
+                        numerics[num_col].push(value);
                     },
                     ColType::String => {
                         let string_col: usize = col_to_string[i].unwrap();
-                        strings[string_col].entries.push(entries[i].to_string());
+                        strings[string_col].push(entries[i].to_string());
                     }
                 }
             }
@@ -125,7 +113,7 @@ impl Table {
         })
     }
 
-    pub fn num_agg(&self, col_name: &str) -> Result<AggNum> {
+    pub fn num_agg(&self, col_name: &str) -> Result<Self> {
         let col_index = self.headers.iter().position(|h| h == col_name);
         let num_index = if let Some(c) = col_index {
             self.col_to_numeric[c]
@@ -140,16 +128,54 @@ impl Table {
 
         let mut agg_builder = AggNumBuilder::new();
 
-        for (i, val) in col.entries.iter().enumerate() {
-            agg_builder.add_val(*val, i);
+        for val in col.iter() {
+            agg_builder.add_val(*val);
         }
 
         let agg = agg_builder.build()?;
 
-        Ok(agg)
+        Ok(Table {
+            headers: vec![
+                "min".into(),
+                "max".into(),
+                "mean".into(),
+                "sum".into(),
+                "stddev".into()
+            ],
+            col_types: vec![
+                ColType::Numeric,
+                ColType::Numeric,
+                ColType::Numeric,
+                ColType::Numeric,
+                ColType::Numeric,
+            ],
+            col_to_numeric: vec![
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+            ],
+            col_to_string: vec![
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+            numerics: vec![
+                vec![agg.min],
+                vec![agg.max],
+                vec![agg.mean],
+                vec![agg.sum],
+                vec![agg.stddev],
+            ],
+            strings: vec![],
+            len: 1,
+        })
     }
 
-    pub fn group_num_agg(&self, col_name: &str, group_col: &str) -> Result<Vec<(String, AggNum)>> {
+    pub fn group_num_agg(&self, col_name: &str, group_col_name: &str) -> Result<Table> {
         let col_index = self.headers.iter().position(|h| h == col_name);
         let num_index = if let Some(c) = col_index {
             self.col_to_numeric[c]
@@ -162,7 +188,7 @@ impl Table {
             return Err(TableError::ColumnNotNumeric.into());
         };
 
-        let group_index = match self.headers.iter().position(|h| h == group_col) {
+        let group_index = match self.headers.iter().position(|h| h == group_col_name) {
             Some(i) => i,
             None => return Err(TableError::GroupColumnNotFound.into()),
         };
@@ -177,23 +203,98 @@ impl Table {
 
         let mut builder_map = HashMap::<String, AggNumBuilder>::new();
 
-        for (i, val) in col.entries.iter().enumerate() {
-            let group_name = group_col.entries[i].clone();
+        for (i, val) in col.iter().enumerate() {
+            let group_name = group_col[i].clone();
             match builder_map.get_mut(&group_name) {
-                Some(agg_builder) => agg_builder.add_val(*val, i),
+                Some(agg_builder) => agg_builder.add_val(*val),
                 None => {
                     let mut agg_builder = AggNumBuilder::new();
-                    agg_builder.add_val(*val, i);
+                    agg_builder.add_val(*val);
                     builder_map.insert(group_name, agg_builder);
                 }
             }
         }
 
-        let result = builder_map.into_iter()
-            .map(|(g, ab)| (g, ab.build().unwrap()))
-            .collect();
+        let mut table = Table {
+            headers: vec![
+                group_col_name.into(),
+                "min".into(),
+                "max".into(),
+                "mean".into(),
+                "sum".into(),
+                "stddev".into(),
+            ],
+            col_types: vec![
+                ColType::String,
+                ColType::Numeric,
+                ColType::Numeric,
+                ColType::Numeric,
+                ColType::Numeric,
+                ColType::Numeric,
+            ],
+            col_to_string: vec![
+                Some(0),
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+            col_to_numeric: vec![
+                None,
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+            ],
+            strings: vec![vec![]],
+            numerics: vec![
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+            ],
+            len: 0,
+        };
 
-        Ok(result)
+        for (g, ab) in builder_map {
+            let agg = ab.build().unwrap();
+            table.strings[0].push(g);
+            table.numerics[0].push(agg.min);
+            table.numerics[1].push(agg.max);
+            table.numerics[2].push(agg.mean);
+            table.numerics[3].push(agg.sum);
+            table.numerics[4].push(agg.stddev);
+            table.len += 1;
+        }
+
+        Ok(table)
+    }
+
+    pub fn to_csv(&self, delimiter: &str) -> String {
+        let mut lines = Vec::with_capacity(self.len + 1);
+        lines.push(self.headers.join(delimiter));
+        for i in 0..self.len {
+            let mut line: Vec<String> = Vec::with_capacity(self.headers.len()); 
+            for j in 0..self.headers.len() {
+                let value = match self.col_types[j] {
+                    // Assume table is correctly formatted
+                    ColType::Numeric => {
+                        let index = self.col_to_numeric[j].unwrap();
+                        self.numerics[index][i].to_string()
+                    }
+                    ColType::String => {
+                        let index = self.col_to_string[j].unwrap();
+                        self.strings[index][i].clone()
+                    }
+                };
+                line.push(value);
+            }
+            lines.push(line.join(delimiter));
+        }
+        lines.join("\n")
     }
 }
 
@@ -236,8 +337,8 @@ impl Error for TableParserError {}
 pub struct AggNum {
     pub mean: f64,
     // index value pairs
-    pub min: (usize, f64),
-    pub max: (usize, f64),
+    pub min: f64,
+    pub max: f64,
     pub sum: f64,
     pub stddev: f64,
 }
@@ -248,8 +349,8 @@ struct AggNumBuilder {
     squared_sum: f64,
     len: usize,
     // index value pairs
-    min: Option<(usize, f64)>,
-    max: Option<(usize, f64)>,
+    min: Option<f64>,
+    max: Option<f64>,
 }
 
 impl AggNumBuilder {
@@ -263,25 +364,25 @@ impl AggNumBuilder {
         }
     }
 
-    fn add_val(&mut self, val: f64, index: usize) {
+    fn add_val(&mut self, val: f64) {
         self.sum += val;
         self.squared_sum += val * val;
         self.len += 1;
 
-        if let Some((_, min)) = self.min {
+        if let Some(min) = self.min {
             if min > val {
-                self.min = Some((index, val))
+                self.min = Some(val)
             }
         } else {
-            self.min = Some((index, val))
+            self.min = Some(val)
         }
 
-        if let Some((_, max)) = self.max {
+        if let Some(max) = self.max {
             if max < val {
-                self.max = Some((index, val))
+                self.max = Some(val)
             }
         } else {
-            self.max = Some((index, val))
+            self.max = Some(val)
         }
     }
 
