@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, fmt::{write, Display}, io::BufRead};
+use std::{collections::HashMap, error::Error, fmt::Display, io::BufRead};
 
 use anyhow::{Context, Result};
 
