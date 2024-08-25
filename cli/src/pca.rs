@@ -1,6 +1,7 @@
 use std::{io::BufRead, path::PathBuf};
 
 use clap::Args;
+use stats::{pca::pca, table::Table};
 
 use crate::util::{self, DataType};
 
@@ -13,6 +14,9 @@ pub struct PcaArgs {
     datatype: Option<DataType>,
     /// File containing data
     filename: Option<PathBuf>,
+    /// CSV delimiter
+    #[arg(short, long, default_value_t = String::from(","))]
+    csv_delim: String,
 }
 
 pub fn pca_main(args: PcaArgs) {
@@ -44,8 +48,17 @@ pub fn pca_main(args: PcaArgs) {
         }
     };
 
-    match datatype {
-        DataType::CSV => {},
-    }
+    let table = match datatype {
+        DataType::CSV => Table::from_csv(reader, &args.csv_delim),
+    };
+    let mut table = match table {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error parsing data: {}", e);
+            return;
+        }
+    };
+    table.pca().unwrap();
+    println!("{}", table.to_csv(&args.csv_delim));
 }
 

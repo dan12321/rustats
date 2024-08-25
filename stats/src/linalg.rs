@@ -1,5 +1,6 @@
 
-use std::{cmp::min, error::Error, fmt::Display};
+use core::f64;
+use std::{cmp::{max, min}, error::Error, fmt::Display, ops::Mul, result};
 
 use anyhow::Result;
 
@@ -48,6 +49,25 @@ impl Matrix {
             width: matrix.width,
             height: self.height,
         })
+    }
+
+    pub fn vec_mul(&self, vec: &Vec<f64>) -> Result<Vec<f64>> {
+        if self.width != vec.len() {
+            return Err(MatrixError::SizeMismatch.into());
+        }
+
+        let mut result: Vec<f64> = Vec::with_capacity(vec.len());
+        for i in 0..self.height {
+            let mut value = 0.0;
+            for j in 0..self.width {
+                let a = self.get_unchecked(i, j);
+                let b = vec[j];
+                value += a * b;
+            }
+
+            result.push(value);
+        }
+        Ok(result)
     }
 
     pub fn scalar_mul(&self, value: f64) -> Self {
@@ -181,9 +201,17 @@ impl Matrix {
             height,
         }
     }
+
+    pub fn height(&self) -> usize {
+        self.height
+    }
+
+    pub fn width(&self) -> usize {
+        self.width
+    }
 }
 
-struct SquareMatrix {
+pub struct SquareMatrix {
     matrix: Matrix,
     n: usize, 
 }
@@ -219,7 +247,7 @@ impl SquareMatrix {
     ///
     /// `threshold`: how close the lower triangle should be to 0.
     /// `max_iter`: maximum number of iterations
-    pub fn eigen_values(&self, threshold: f64, max_iter: usize) -> Vec<f64> {
+    fn eigen_values(&self, threshold: f64, max_iter: usize) -> Vec<f64> {
         let mut a = SquareMatrix {
             matrix: self.matrix.clone(),
             n: self.n,
@@ -252,6 +280,95 @@ impl SquareMatrix {
         }
         true
     }
+
+    /// Approximate eigen vectors
+    /// The matrix must be invertible
+    pub fn eigen_vectors(&self, val_threshold: f64, val_max_iter: usize, vec_iter: usize) -> SquareMatrix {
+        let eigen_values = self.eigen_values(val_threshold, val_max_iter);
+        let mut result = Matrix::new(
+            vec![0.0;self.n*self.n],
+            self.n,
+            self.n).unwrap();
+        for i in 0..eigen_values.len() {
+            // shifted = A - sI
+            let shift = Matrix::identity(self.n, self.n).scalar_mul(eigen_values[i]);
+            let shifted: SquareMatrix = self.matrix.sub(shift).unwrap().try_into().unwrap();
+
+            let lu = shifted.lu_decomp();
+
+            // Find the predominant eigen vector for (A - sI)^-1
+            let mut basis = vec![1.0; self.n];
+            for _ in 0..vec_iter {
+                basis = lu.solve_for_vec(&basis).unwrap();
+                let mut max: f64 = 0.0;
+                for a in &basis {
+                    max = if a.abs() > max.abs() { *a } else { max };
+                }
+                for i in 0..basis.len() {
+                    basis[i] /= max;
+                }
+            }
+            result.set_col(i, &basis).unwrap();
+        }
+        result.try_into().unwrap()
+    }
+
+    /// Approximate eigen vector
+    pub fn weakest_eigen_vector(&self, iter: usize) -> Vec<f64> {
+        let lu = self.lu_decomp();
+        let mut basis = vec![1.0; self.n];
+        for _ in 0..iter {
+            basis = lu.solve_for_vec(&basis).unwrap();
+
+            let mut max = f64::MIN;
+            for a in &basis {
+                max = max.max(*a);
+            }
+            for i in 0..basis.len() {
+                basis[i] /= max;
+            }
+        }
+        basis
+    }
+
+    /// Approximate eigen vector
+    pub fn dominant_eigen_vector(&self, iter: usize) -> Vec<f64> {
+        let mut basis = vec![1.0; self.n];
+        for _ in 0..iter {
+            basis = self.matrix.vec_mul(&basis).unwrap();
+
+            let mut max = f64::MIN;
+            for a in &basis {
+                max = max.max(*a);
+            }
+            for i in 0..basis.len() {
+                basis[i] /= max;
+            }
+        }
+        basis
+    }
+
+    pub fn lu_decomp(&self) -> LU {
+        let mut upper = self.matrix.clone();
+        let mut lower = Matrix::identity(self.n, self.n);
+        for i in 1..self.n {
+            let pivot = upper.get_unchecked(i-1, i-1);
+            for j in i..self.n {
+                let adjustment = upper.get_unchecked(j, i-1) / pivot;
+                lower.set_unchecked(j, i-1, adjustment);
+                for col in 0..self.n {
+                    let value = upper.get_unchecked(j, col) -
+                        adjustment *upper.get_unchecked(i-1, col);
+                    upper.set_unchecked(j, col, value);
+                }
+            }
+        }
+        LU {
+            l: lower,
+            u: upper,
+            n: self.n,
+        }
+    }
 }
 
 impl TryFrom<Matrix> for SquareMatrix {
@@ -268,26 +385,40 @@ impl TryFrom<Matrix> for SquareMatrix {
     }
 }
 
-fn dot(u: &Vec<f64>, v: &Vec<f64>) -> f64 {
+impl Into<Matrix> for SquareMatrix {
+    fn into(self) -> Matrix {
+        self.matrix
+    }
+}
+
+pub fn dot(u: &Vec<f64>, v: &Vec<f64>) -> f64 {
     u.iter()
         .zip(v.iter())
         .fold(0.0, |acc, (a, b)| acc + a * b)
 }
 
-fn norm(u: &Vec<f64>) -> f64 {
+pub fn matrix_rows(u: &Vec<f64>, height: usize) -> Matrix {
+    Matrix {
+        elements: u.repeat(height),
+        height: height,
+        width: u.len(),
+    }
+}
+
+pub fn norm(u: &Vec<f64>) -> f64 {
     u.iter()
         .fold(0.0, |acc, a| acc + a * a)
         .sqrt()
 }
 
-fn add(u: &Vec<f64>, v: &Vec<f64>) -> Vec<f64> {
+pub fn add(u: &Vec<f64>, v: &Vec<f64>) -> Vec<f64> {
     u.iter()
         .zip(v.iter())
         .map(|(a, b)| a + b)
         .collect()
 }
 
-fn sub(u: &Vec<f64>, v: &Vec<f64>) -> Vec<f64> {
+pub fn sub(u: &Vec<f64>, v: &Vec<f64>) -> Vec<f64> {
     u.iter()
         .zip(v.iter())
         .map(|(a, b)| a - b)
@@ -313,6 +444,42 @@ pub struct QR {
     q: Matrix,
     // Upper Triangular
     r: Matrix,
+}
+
+pub struct LU {
+    // Lower Triangular
+    l: Matrix,
+    // Upper Triangular
+    u: Matrix,
+    n: usize,
+}
+
+impl LU {
+    /// Given an equation LUu = v where v is known,
+    /// solve for u.
+    /// A=LU must be invertible
+    pub fn solve_for_vec(&self, v: &Vec<f64>) -> Result<Vec<f64>> {
+        if v.len() != self.n {
+            return Err(MatrixError::SizeMismatch.into());
+        }
+        let mut l_result = vec![0.0; v.len()];
+        for i in 0..v.len() {
+            l_result[i] = v[i];
+            for j in 0..i {
+                l_result[i] -= l_result[j] * self.l.get_unchecked(i, j);
+            }
+            l_result[i] /= self.l.get_unchecked(i, i);
+        }
+        let mut u_result = vec![0.0; l_result.len()];
+        for i in (0..l_result.len()).rev() {
+            u_result[i] = l_result[i];
+            for j in i+1..l_result.len() {
+                u_result[i] -= u_result[j] * self.u.get_unchecked(i, j);
+            }
+            u_result[i] /= self.u.get_unchecked(i, i);
+        }
+        Ok(u_result)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -503,5 +670,116 @@ mod tests {
         let expected_result = vec![3.0, 5.0];
 
         assert_eq!(result, expected_result);
+    }
+
+    #[test]
+    fn test_lu_decomp() {
+        let a: SquareMatrix = Matrix::new(vec![
+            1.0, 2.0, 3.0,
+            3.0, 2.0, 1.0,
+            1.0, 2.0, 1.0,
+        ], 3, 3).unwrap().try_into().unwrap();
+
+        let result = a.lu_decomp();
+
+        let expected_l = Matrix::new(
+            vec![
+                1.0, 0.0, 0.0,
+                3.0, 1.0, 0.0,
+                1.0, 0.0, 1.0,
+            ],
+            3,
+            3
+        ).unwrap();
+        let expected_u = Matrix::new(
+            vec![
+                1.0, 2.0, 3.0,
+                0.0, -4.0, -8.0,
+                0.0, 0.0, -2.0,
+            ],
+            3,
+            3
+        ).unwrap();
+
+        assert_eq!(result.l, expected_l);
+        assert_eq!(result.u, expected_u);
+    }
+
+    #[test]
+    fn test_lu_solve_for_vec() {
+        let a: SquareMatrix = Matrix::new(vec![
+            1.0, 2.0, 3.0,
+            3.0, 2.0, 1.0,
+            1.0, 2.0, 1.0,
+        ], 3, 3).unwrap().try_into().unwrap();
+        let lu = a.lu_decomp();
+        let v = vec![1.0, 2.0, 3.0];
+
+        let u = lu.solve_for_vec(&v).unwrap();
+
+        let expected_u = vec![-0.5, 2.25, -1.0];
+
+        assert_eq!(u, expected_u);
+    }
+
+    #[test]
+    fn test_get_eigen_vectors() {
+        let a: SquareMatrix = Matrix::new(vec![
+            3.0, 4.0, -2.0,
+            1.0, 4.0, -1.0,
+            2.0, 6.0, -1.0,
+        ], 3, 3).unwrap().try_into().unwrap();
+
+        let eigen_vectors: Matrix = a.eigen_vectors(0.01, 5, 100).into();
+
+        let expected_result = Matrix::new(
+            vec![
+                0.5, 0.0, 1.0,
+                0.5, 0.5, 0.0,
+                1.0, 1.0, 1.0,
+            ],
+            3,
+            3,
+        ).unwrap();
+
+        assert_eq!(eigen_vectors.round(3), expected_result);
+    }
+
+    #[test]
+    fn test_get_dominant_eigen_vector() {
+        let a: SquareMatrix = Matrix::new(vec![
+            3.0, 4.0, -2.0,
+            1.0, 4.0, -1.0,
+            2.0, 6.0, -1.0,
+        ], 3, 3).unwrap().try_into().unwrap();
+
+        let eigen_vector = a.dominant_eigen_vector(100);
+
+        let expected_result = vec![
+            0.5,
+            0.5,
+            1.0,
+        ];
+
+        assert_eq!(round(&eigen_vector, 3), expected_result);
+    }
+
+    #[test]
+    fn test_get_weakest_eigen_vector() {
+        let a: SquareMatrix = Matrix::new(vec![
+            3.0, 4.0, -2.0,
+            1.0, 4.0, -1.0,
+            2.0, 6.0, -1.0,
+        ], 3, 3).unwrap().try_into().unwrap();
+
+        let eigen_vector = a.weakest_eigen_vector(100);
+
+        let expected_result = vec![
+            1.0,
+            0.0,
+            1.0,
+        ];
+
+        assert_eq!(round(&eigen_vector, 3), expected_result);
     }
 }

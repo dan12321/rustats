@@ -2,6 +2,8 @@ use std::{collections::HashMap, error::Error, fmt::Display, io::BufRead};
 
 use anyhow::{Context, Result};
 
+use crate::{linalg::Matrix, pca::pca};
+
 #[derive(Debug)]
 pub struct Table {
     headers: Vec<String>,
@@ -295,6 +297,28 @@ impl Table {
             lines.push(line.join(delimiter));
         }
         lines.join("\n")
+    }
+
+    pub fn pca(&mut self) -> Result<()> {
+        let data = self.get_matrix().context("Get matrix from table")?;
+        let pca_data = pca(data)?;
+        self.numerics_from_matrix(&pca_data)?;
+        Ok(())
+    }
+
+    fn get_matrix(&self) -> Result<Matrix> {
+        Matrix::new(
+            self.numerics.concat(),
+            self.len,
+            self.numerics.len()
+        ).context("Create new matrix")
+    }
+
+    pub fn numerics_from_matrix(&mut self, matrix: &Matrix) -> Result<()> {
+        for i in 0..self.numerics.len() {
+            self.numerics[i] = matrix.get_col(i)?;
+        }
+        Ok(())
     }
 }
 
