@@ -1,8 +1,6 @@
-use crate::linalg::{matrix_rows, Matrix, MatrixError, SquareMatrix};
+use crate::linalg::{matrix_rows, Matrix, SquareMatrix};
 
-use super::table::Table;
-
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 pub fn pca(data: Matrix) -> Result<Matrix> {
     let mean = matrix_rows(&data.mean_row(), data.height());

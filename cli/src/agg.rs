@@ -1,7 +1,7 @@
 use std::{io::BufRead, path::PathBuf};
 
 use clap::Args;
-use stats::table::{AggNum, Table};
+use stats::table::Table;
 
 use crate::util::{self, DataType};
 

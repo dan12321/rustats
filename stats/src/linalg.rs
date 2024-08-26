@@ -1,6 +1,6 @@
 
 use core::f64;
-use std::{cmp::{max, min}, error::Error, fmt::Display, ops::Mul, result};
+use std::{cmp::min, error::Error, fmt::Display};
 
 use anyhow::Result;
 
