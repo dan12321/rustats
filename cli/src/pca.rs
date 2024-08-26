@@ -58,7 +58,13 @@ pub fn pca_main(args: PcaArgs) {
             return;
         }
     };
-    table.pca().unwrap();
+    match table.pca() {
+        Ok(()) => (),
+        Err(e) => {
+            eprintln!("Error calculating pca: {}", e);
+            return;
+        }
+    }
     println!("{}", table.to_csv(&args.csv_delim));
 }
 
