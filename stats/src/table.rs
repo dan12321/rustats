@@ -15,7 +15,7 @@ pub struct Table {
     len: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ColType {
     Numeric,
     String,
@@ -303,6 +303,13 @@ impl Table {
         let data = self.get_matrix().context("Get matrix from table")?;
         let pca_data = pca(data)?;
         self.numerics_from_matrix(&pca_data)?;
+        let mut pca_i = 1;
+        for i in 0..self.headers.len() {
+            if self.col_types[i] == ColType::Numeric {
+                self.headers[i] = format!("pca{}", pca_i);
+                pca_i += 1;
+            }
+        }
         Ok(())
     }
 
