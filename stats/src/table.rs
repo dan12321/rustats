@@ -314,8 +314,14 @@ impl Table {
     }
 
     fn get_matrix(&self) -> Result<Matrix> {
+        let mut elements = vec![0.0; self.len * self.numerics.len()];
+        for i in 0..self.numerics.len() {
+            for j in 0..self.len {
+                elements[j * self.numerics.len() + i] = self.numerics[i][j];
+            }
+        }
         Matrix::new(
-            self.numerics.concat(),
+            elements,
             self.len,
             self.numerics.len()
         ).context("Create new matrix")
