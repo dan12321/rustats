@@ -313,41 +313,6 @@ impl SquareMatrix {
         Ok(result.try_into().unwrap())
     }
 
-    /// Approximate eigen vector
-    pub fn weakest_eigen_vector(&self, iter: usize) -> Vec<f64> {
-        let lu = self.lu_decomp();
-        let mut basis = vec![1.0; self.n];
-        for _ in 0..iter {
-            basis = lu.solve_for_vec(&basis).unwrap();
-
-            let mut max = f64::MIN;
-            for a in &basis {
-                max = max.max(*a);
-            }
-            for i in 0..basis.len() {
-                basis[i] /= max;
-            }
-        }
-        basis
-    }
-
-    /// Approximate eigen vector
-    pub fn dominant_eigen_vector(&self, iter: usize) -> Vec<f64> {
-        let mut basis = vec![1.0; self.n];
-        for _ in 0..iter {
-            basis = self.matrix.vec_mul(&basis).unwrap();
-
-            let mut max = f64::MIN;
-            for a in &basis {
-                max = max.max(*a);
-            }
-            for i in 0..basis.len() {
-                basis[i] /= max;
-            }
-        }
-        basis
-    }
-
     pub fn lu_decomp(&self) -> LU {
         let mut upper = self.matrix.clone();
         let mut lower = Matrix::identity(self.n, self.n);
@@ -431,14 +396,6 @@ fn scalar_mul(a: f64, u: &Vec<f64>) -> Vec<f64> {
         .collect()
 }
 
-pub fn round(u: &Vec<f64>, places: i32) -> Vec<f64> {
-    let shift = 10.0_f64.powi(places);
-    let elements = u.iter()
-        .map(|a| (a * shift).round() / shift)
-        .collect();
-    elements
-}
-
 pub struct QR {
     // Orthonormal
     q: Matrix,
@@ -506,6 +463,15 @@ impl Error for MatrixError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    fn round(u: &Vec<f64>, places: i32) -> Vec<f64> {
+        let shift = 10.0_f64.powi(places);
+        let elements = u.iter()
+            .map(|a| (a * shift).round() / shift)
+            .collect();
+        elements
+    }
 
     #[test]
     fn test_matrix_new_size_mismatch() {
@@ -766,43 +732,5 @@ mod tests {
         ).unwrap();
 
         assert_eq!(eigen_vectors.round(3), expected_result);
-    }
-
-    #[test]
-    fn test_get_dominant_eigen_vector() {
-        let a: SquareMatrix = Matrix::new(vec![
-            3.0, 4.0, -2.0,
-            1.0, 4.0, -1.0,
-            2.0, 6.0, -1.0,
-        ], 3, 3).unwrap().try_into().unwrap();
-
-        let eigen_vector = a.dominant_eigen_vector(100);
-
-        let expected_result = vec![
-            0.5,
-            0.5,
-            1.0,
-        ];
-
-        assert_eq!(round(&eigen_vector, 3), expected_result);
-    }
-
-    #[test]
-    fn test_get_weakest_eigen_vector() {
-        let a: SquareMatrix = Matrix::new(vec![
-            3.0, 4.0, -2.0,
-            1.0, 4.0, -1.0,
-            2.0, 6.0, -1.0,
-        ], 3, 3).unwrap().try_into().unwrap();
-
-        let eigen_vector = a.weakest_eigen_vector(100);
-
-        let expected_result = vec![
-            1.0,
-            0.0,
-            1.0,
-        ];
-
-        assert_eq!(round(&eigen_vector, 3), expected_result);
     }
 }
