@@ -462,6 +462,11 @@ impl LU {
         if v.len() != self.n {
             return Err(MatrixError::SizeMismatch.into());
         }
+        for i in 0..self.n {
+            if self.u.get_unchecked(i, i) == 0.0 {
+                return Err(MatrixError::NotInvertible.into())
+            }
+        }
         let mut l_result = vec![0.0; v.len()];
         for i in 0..v.len() {
             l_result[i] = v[i];
@@ -487,6 +492,7 @@ pub enum MatrixError {
     SizeMismatch,
     OutOfBounds,
     NotSquare,
+    NotInvertible,
 }
 
 impl Display for MatrixError {
@@ -720,6 +726,23 @@ mod tests {
         let expected_u = vec![-0.5, 2.25, -1.0];
 
         assert_eq!(u, expected_u);
+    }
+
+    #[test]
+    fn test_lu_solve_for_vec_error_if_not_invertible() {
+        let a: SquareMatrix = Matrix::new(vec![
+            1.0, 2.0, 3.0,
+            4.0, 5.0, 6.0,
+            7.0, 8.0, 9.0,
+        ], 3, 3).unwrap().try_into().unwrap();
+        let lu = a.lu_decomp();
+        let v = vec![1.0, 2.0, 3.0];
+
+        let err: Option<MatrixError> = lu.solve_for_vec(&v)
+            .err()
+            .map(|e| e.downcast().unwrap());
+
+        assert_eq!(err, Some(MatrixError::NotInvertible));
     }
 
     #[test]
