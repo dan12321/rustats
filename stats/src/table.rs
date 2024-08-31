@@ -141,7 +141,7 @@ impl Table {
                 "min".into(),
                 "max".into(),
                 "mean".into(),
-                "sum".into(),
+                "count".into(),
                 "stddev".into()
             ],
             col_types: vec![
@@ -169,7 +169,7 @@ impl Table {
                 vec![agg.min],
                 vec![agg.max],
                 vec![agg.mean],
-                vec![agg.sum],
+                vec![agg.count as f64],
                 vec![agg.stddev],
             ],
             strings: vec![],
@@ -223,7 +223,7 @@ impl Table {
                 "min".into(),
                 "max".into(),
                 "mean".into(),
-                "sum".into(),
+                "count".into(),
                 "stddev".into(),
             ],
             col_types: vec![
@@ -267,7 +267,7 @@ impl Table {
             table.numerics[0].push(agg.min);
             table.numerics[1].push(agg.max);
             table.numerics[2].push(agg.mean);
-            table.numerics[3].push(agg.sum);
+            table.numerics[3].push(agg.count as f64);
             table.numerics[4].push(agg.stddev);
             table.len += 1;
         }
@@ -376,7 +376,7 @@ pub struct AggNum {
     // index value pairs
     pub min: f64,
     pub max: f64,
-    pub sum: f64,
+    pub count: usize,
     pub stddev: f64,
 }
 
@@ -444,7 +444,7 @@ impl AggNumBuilder {
             mean,
             min,
             max,
-            sum: self.sum,
+            count: self.len,
             stddev,
         })
     }

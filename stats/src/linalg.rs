@@ -283,7 +283,7 @@ impl SquareMatrix {
 
     /// Approximate eigen vectors
     /// The matrix must be invertible
-    pub fn eigen_vectors(&self, val_threshold: f64, val_max_iter: usize, vec_iter: usize) -> SquareMatrix {
+    pub fn eigen_vectors(&self, val_threshold: f64, val_max_iter: usize, vec_iter: usize) -> Result<SquareMatrix> {
         let eigen_values = self.eigen_values(val_threshold, val_max_iter);
         let mut result = Matrix::new(
             vec![0.0;self.n*self.n],
@@ -299,7 +299,7 @@ impl SquareMatrix {
             // Find the predominant eigen vector for (A - sI)^-1
             let mut basis = vec![1.0; self.n];
             for _ in 0..vec_iter {
-                basis = lu.solve_for_vec(&basis).unwrap();
+                basis = lu.solve_for_vec(&basis)?;
                 let mut max: f64 = 0.0;
                 for a in &basis {
                     max = if a.abs() > max.abs() { *a } else { max };
@@ -310,7 +310,7 @@ impl SquareMatrix {
             }
             result.set_col(i, &basis).unwrap();
         }
-        result.try_into().unwrap()
+        Ok(result.try_into().unwrap())
     }
 
     /// Approximate eigen vector
@@ -753,7 +753,7 @@ mod tests {
             2.0, 6.0, -1.0,
         ], 3, 3).unwrap().try_into().unwrap();
 
-        let eigen_vectors: Matrix = a.eigen_vectors(0.01, 5, 100).into();
+        let eigen_vectors: Matrix = a.eigen_vectors(0.01, 5, 100).unwrap().into();
 
         let expected_result = Matrix::new(
             vec![
