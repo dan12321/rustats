@@ -33,19 +33,30 @@ Instead I've used a more direct translation of the maths of PCA.
 
 ### Implementation
 Take the input data, $X$. We first center the data.
+
 $$B=X-\bar{X}$$
+
 Find the covariance.
+
 $$C=B^TB$$
+
 Next we need to find the eigenvectors of $C$. To do this we first find the eigenvalues which can be approximated with QR decomposition.
 
 #### QR Algorithm
 For the matrix $C$ we find $C=QR$ such that $Q$ is an orthogonal matrix and $R$ is an upper triangular matrix. We can approximate the matrix $D$ where the diagonal of $D$ is the eigenvalues of $C$ in order of magnitude with the following:
+
 $$Q_1R_1=C$$
+
 $$D_1=R_1Q_1$$
+
 $$Q_2R_2=D_1$$
+
 $$D_2=R_2Q_2$$
+
 $$\vdots$$
+
 $$D_k=R_kQ_k$$
+
 In my experience so far $D_k$ approaches $D$ quite quickly. Around 10 iterations has been plenty for my use case. I haven't
 looked into this rigorously yet.
 #### Power Method
@@ -55,7 +66,9 @@ Now that we have the eigenvalues we can approximate the eigenvectors. The power 
 2) For an eigenvalue $\lambda$ it's associated eigenvector $v$ is the least prominent eigenvector of $C-\lambda I$
 
 With this we have
+
 $$(C-\lambda I)^kv_k=u$$
+
 Then solve for $v_k$ using the $LU$ decomposition of $(C-\lambda I)^k$.
 
 #### QR Decomposition
