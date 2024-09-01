@@ -11,3 +11,4 @@ pub fn pca(data: Matrix) -> Result<Matrix> {
     let pca = centered_data.mul(&eigen_vectors).unwrap();
     Ok(pca)
 }
+

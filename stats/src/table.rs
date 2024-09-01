@@ -2,7 +2,12 @@ use std::{collections::HashMap, error::Error, fmt::Display, io::BufRead};
 
 use anyhow::{Context, Result};
 
-use crate::{agg::AggNumBuilder, linalg::Matrix, pca::pca, hist::{self, Hist}};
+use crate::{
+    agg::AggNumBuilder,
+    hist::{self, Hist},
+    linalg::Matrix,
+    pca::pca,
+};
 
 #[derive(Debug)]
 pub struct Table {
@@ -33,17 +38,16 @@ impl Table {
                 None => return Err(TableParserError::EmptyFile).context(context)?,
             };
         }
-        let headers: Vec<String> = headers.split(delimiter)
+        let headers: Vec<String> = headers
+            .split(delimiter)
             .map(|h| h.trim().to_string())
             .collect();
 
         let first_line = match lines.next() {
             Some(l) => l.context(context)?,
-            None => return  Err(TableParserError::NoData).context(context)?,
+            None => return Err(TableParserError::NoData).context(context)?,
         };
-        let first_entries: Vec<&str> = first_line.split(delimiter)
-            .map(|l| l.trim())
-            .collect();
+        let first_entries: Vec<&str> = first_line.split(delimiter).map(|l| l.trim()).collect();
         if first_entries.len() != headers.len() {
             return Err(TableParserError::LineSizeConflict(1)).context(context);
         }
@@ -75,9 +79,7 @@ impl Table {
         let mut line_num = 2;
         for line in lines {
             let line = line?;
-            let entries: Vec<&str> = line.split(delimiter)
-                .map(|e| e.trim())
-                .collect();
+            let entries: Vec<&str> = line.split(delimiter).map(|e| e.trim()).collect();
             if entries.len() != headers.len() {
                 return Err(TableParserError::LineSizeConflict(line_num)).context(context);
             }
@@ -85,16 +87,16 @@ impl Table {
                 match col_types[i] {
                     // from col type look up we assume value exists in col_to_X
                     ColType::Numeric => {
-                        let value: f64 = entries[i].parse()
+                        let value: f64 = entries[i]
+                            .parse()
                             .context(format!(
                                 "Failed to parse numeric on line {}, col {}",
-                                line_num,
-                                i,
+                                line_num, i,
                             ))
                             .context(context)?;
                         let num_col: usize = col_to_numeric[i].unwrap();
                         numerics[num_col].push(value);
-                    },
+                    }
                     ColType::String => {
                         let string_col: usize = col_to_string[i].unwrap();
                         strings[string_col].push(entries[i].to_string());
@@ -142,7 +144,7 @@ impl Table {
                 "max".into(),
                 "mean".into(),
                 "count".into(),
-                "stddev".into()
+                "stddev".into(),
             ],
             col_types: vec![
                 ColType::Numeric,
@@ -151,20 +153,8 @@ impl Table {
                 ColType::Numeric,
                 ColType::Numeric,
             ],
-            col_to_numeric: vec![
-                Some(0),
-                Some(1),
-                Some(2),
-                Some(3),
-                Some(4),
-            ],
-            col_to_string: vec![
-                None,
-                None,
-                None,
-                None,
-                None,
-            ],
+            col_to_numeric: vec![Some(0), Some(1), Some(2), Some(3), Some(4)],
+            col_to_string: vec![None, None, None, None, None],
             numerics: vec![
                 vec![agg.min],
                 vec![agg.max],
@@ -234,30 +224,10 @@ impl Table {
                 ColType::Numeric,
                 ColType::Numeric,
             ],
-            col_to_string: vec![
-                Some(0),
-                None,
-                None,
-                None,
-                None,
-                None,
-            ],
-            col_to_numeric: vec![
-                None,
-                Some(0),
-                Some(1),
-                Some(2),
-                Some(3),
-                Some(4),
-            ],
+            col_to_string: vec![Some(0), None, None, None, None, None],
+            col_to_numeric: vec![None, Some(0), Some(1), Some(2), Some(3), Some(4)],
             strings: vec![vec![]],
-            numerics: vec![
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-            ],
+            numerics: vec![vec![], vec![], vec![], vec![], vec![]],
             len: 0,
         };
 
@@ -279,7 +249,7 @@ impl Table {
         let mut lines = Vec::with_capacity(self.len + 1);
         lines.push(self.headers.join(delimiter));
         for i in 0..self.len {
-            let mut line: Vec<String> = Vec::with_capacity(self.headers.len()); 
+            let mut line: Vec<String> = Vec::with_capacity(self.headers.len());
             for j in 0..self.headers.len() {
                 let value = match self.col_types[j] {
                     // Assume table is correctly formatted
@@ -320,11 +290,7 @@ impl Table {
                 elements[j * self.numerics.len() + i] = self.numerics[i][j];
             }
         }
-        Matrix::new(
-            elements,
-            self.len,
-            self.numerics.len()
-        ).context("Create new matrix")
+        Matrix::new(elements, self.len, self.numerics.len()).context("Create new matrix")
     }
 
     fn numerics_from_matrix(&mut self, matrix: &Matrix) -> Result<()> {
@@ -334,7 +300,13 @@ impl Table {
         Ok(())
     }
 
-    pub fn hist(&self, column: &str, width: f64, min: Option<f64>, max: Option<f64>) -> Result<Self> {
+    pub fn hist(
+        &self,
+        column: &str,
+        width: f64,
+        min: Option<f64>,
+        max: Option<f64>,
+    ) -> Result<Self> {
         let head_i = match self.headers.iter().position(|h| h == column) {
             Some(i) => i,
             None => return Err(TableError::ColumnNotFound.into()),
@@ -346,26 +318,11 @@ impl Table {
 
         let hist = Hist::hist(col, width, min, max);
         Ok(Self {
-            headers: vec![
-                column.to_string(),
-                "count".to_string(),
-            ],
-            col_types: vec![
-                ColType::Numeric,
-                ColType::Numeric,
-            ],
-            col_to_numeric: vec![
-                Some(0),
-                Some(1),
-            ],
-            col_to_string: vec![
-                None,
-                None,
-            ],
-            numerics: vec![
-                hist.buckets,
-                hist.counts,
-            ],
+            headers: vec![column.to_string(), "count".to_string()],
+            col_types: vec![ColType::Numeric, ColType::Numeric],
+            col_to_numeric: vec![Some(0), Some(1)],
+            col_to_string: vec![None, None],
+            numerics: vec![hist.buckets, hist.counts],
             strings: vec![],
             len: hist.len,
         })

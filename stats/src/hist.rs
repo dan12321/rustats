@@ -12,7 +12,7 @@ impl Hist {
                 buckets: Vec::new(),
                 counts: Vec::new(),
                 len: 0,
-            }
+            };
         }
 
         let mut auto_min = f64::MAX;
@@ -53,12 +53,7 @@ mod tests {
 
     #[test]
     fn test_hist_given_min_max() {
-        let column = vec![
-            -1.0,
-            2.0,
-            2.1,
-            4.0,
-        ];
+        let column = vec![-1.0, 2.0, 2.1, 4.0];
         let width = 1.0;
         let min = Some(-2.0);
         let max = Some(2.0);
@@ -66,35 +61,17 @@ mod tests {
         let hist = Hist::hist(&column, width, min, max);
 
         let expected = Hist {
-            buckets: vec![
-                -2.0,
-                -1.0,
-                0.0,
-                1.0,
-                2.0,
-            ],
-            counts: vec![
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                3.0,
-            ],
+            buckets: vec![-2.0, -1.0, 0.0, 1.0, 2.0],
+            counts: vec![0.0, 1.0, 0.0, 0.0, 3.0],
             len: 5,
         };
 
         assert_eq!(hist, expected);
     }
 
-
     #[test]
     fn test_hist_no_min_max() {
-        let column = vec![
-            -1.0,
-            2.0,
-            2.1,
-            4.0,
-        ];
+        let column = vec![-1.0, 2.0, 2.1, 4.0];
         let width = 2.0;
         let min = None;
         let max = None;
@@ -102,18 +79,8 @@ mod tests {
         let hist = Hist::hist(&column, width, min, max);
 
         let expected = Hist {
-            buckets: vec![
-                -1.0,
-                1.0,
-                3.0,
-                5.0,
-            ],
-            counts: vec![
-                1.0,
-                0.0,
-                2.0,
-                1.0,
-            ],
+            buckets: vec![-1.0, 1.0, 3.0, 5.0],
+            counts: vec![1.0, 0.0, 2.0, 1.0],
             len: 4,
         };
 

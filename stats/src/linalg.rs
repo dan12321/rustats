@@ -1,4 +1,3 @@
-
 use core::f64;
 use std::{cmp::min, error::Error, fmt::Display};
 
@@ -71,9 +70,7 @@ impl Matrix {
     }
 
     pub fn scalar_mul(&self, value: f64) -> Self {
-        let elements: Vec<f64> = self.elements.iter()
-            .map(|a| a * value)
-            .collect();
+        let elements: Vec<f64> = self.elements.iter().map(|a| a * value).collect();
 
         Self {
             elements,
@@ -86,7 +83,9 @@ impl Matrix {
         if self.width != matrix.width || self.height != matrix.height {
             return Err(MatrixError::SizeMismatch.into());
         }
-        let elements = self.elements.iter()
+        let elements = self
+            .elements
+            .iter()
             .zip(matrix.elements.iter())
             .map(|(a, b)| a - b)
             .collect();
@@ -101,7 +100,9 @@ impl Matrix {
         if self.width != matrix.width || self.height != matrix.height {
             return Err(MatrixError::SizeMismatch.into());
         }
-        let elements = self.elements.iter()
+        let elements = self
+            .elements
+            .iter()
             .zip(matrix.elements.iter())
             .map(|(a, b)| a + b)
             .collect();
@@ -168,7 +169,9 @@ impl Matrix {
 
     pub fn round(&self, places: i32) -> Self {
         let shift = 10.0_f64.powi(places);
-        let elements = self.elements.iter()
+        let elements = self
+            .elements
+            .iter()
             .map(|a| (a * shift).round() / shift)
             .collect();
         Self {
@@ -179,7 +182,7 @@ impl Matrix {
     }
 
     pub fn mean_row(&self) -> Vec<f64> {
-        let mut elements = vec![0.0;self.width];
+        let mut elements = vec![0.0; self.width];
         for i in 0..self.height {
             for j in 0..self.width {
                 elements[j] += self.get_unchecked(i, j) / self.height as f64;
@@ -213,7 +216,7 @@ impl Matrix {
 
 pub struct SquareMatrix {
     matrix: Matrix,
-    n: usize, 
+    n: usize,
 }
 
 impl SquareMatrix {
@@ -228,19 +231,17 @@ impl SquareMatrix {
             let mut adjustments = vec![0.0; self.n];
             for j in 0..i {
                 let qj = q.get_col(j).unwrap();
-                let coef = dot(&ai,&qj);
+                let coef = dot(&ai, &qj);
                 adjustments = add(&adjustments, &scalar_mul(coef, &qj));
                 r.set(j, i, coef).unwrap();
             }
             let ai_perp = sub(&ai, &adjustments);
             let ai_perp_norm = norm(&ai_perp);
             r.set(i, i, ai_perp_norm).unwrap();
-            q.set_col(i, &scalar_mul(1.0 / ai_perp_norm, &ai_perp)).unwrap();
+            q.set_col(i, &scalar_mul(1.0 / ai_perp_norm, &ai_perp))
+                .unwrap();
         }
-        QR {
-            q,
-            r,
-        }
+        QR { q, r }
     }
 
     /// Compute the eigen values of a matrix using the qr algorithm.
@@ -272,7 +273,7 @@ impl SquareMatrix {
 
     fn non_upper_triangle_within_threshold(&self, threshold: f64) -> bool {
         for i in 0..self.n {
-            for j in i+1..self.n {
+            for j in i + 1..self.n {
                 if self.matrix.get_unchecked(j, i).abs() > threshold {
                     return false;
                 }
@@ -283,12 +284,14 @@ impl SquareMatrix {
 
     /// Approximate eigen vectors
     /// The matrix must be invertible
-    pub fn eigen_vectors(&self, val_threshold: f64, val_max_iter: usize, vec_iter: usize) -> Result<SquareMatrix> {
+    pub fn eigen_vectors(
+        &self,
+        val_threshold: f64,
+        val_max_iter: usize,
+        vec_iter: usize,
+    ) -> Result<SquareMatrix> {
         let eigen_values = self.eigen_values(val_threshold, val_max_iter);
-        let mut result = Matrix::new(
-            vec![0.0;self.n*self.n],
-            self.n,
-            self.n).unwrap();
+        let mut result = Matrix::new(vec![0.0; self.n * self.n], self.n, self.n).unwrap();
         for i in 0..eigen_values.len() {
             // shifted = A - sI
             let shift = Matrix::identity(self.n, self.n).scalar_mul(eigen_values[i]);
@@ -317,13 +320,13 @@ impl SquareMatrix {
         let mut upper = self.matrix.clone();
         let mut lower = Matrix::identity(self.n, self.n);
         for i in 1..self.n {
-            let pivot = upper.get_unchecked(i-1, i-1);
+            let pivot = upper.get_unchecked(i - 1, i - 1);
             for j in i..self.n {
-                let adjustment = upper.get_unchecked(j, i-1) / pivot;
-                lower.set_unchecked(j, i-1, adjustment);
+                let adjustment = upper.get_unchecked(j, i - 1) / pivot;
+                lower.set_unchecked(j, i - 1, adjustment);
                 for col in 0..self.n {
-                    let value = upper.get_unchecked(j, col) -
-                        adjustment *upper.get_unchecked(i-1, col);
+                    let value =
+                        upper.get_unchecked(j, col) - adjustment * upper.get_unchecked(i - 1, col);
                     upper.set_unchecked(j, col, value);
                 }
             }
@@ -357,9 +360,7 @@ impl Into<Matrix> for SquareMatrix {
 }
 
 pub fn dot(u: &Vec<f64>, v: &Vec<f64>) -> f64 {
-    u.iter()
-        .zip(v.iter())
-        .fold(0.0, |acc, (a, b)| acc + a * b)
+    u.iter().zip(v.iter()).fold(0.0, |acc, (a, b)| acc + a * b)
 }
 
 pub fn matrix_rows(u: &Vec<f64>, height: usize) -> Matrix {
@@ -371,29 +372,19 @@ pub fn matrix_rows(u: &Vec<f64>, height: usize) -> Matrix {
 }
 
 pub fn norm(u: &Vec<f64>) -> f64 {
-    u.iter()
-        .fold(0.0, |acc, a| acc + a * a)
-        .sqrt()
+    u.iter().fold(0.0, |acc, a| acc + a * a).sqrt()
 }
 
 pub fn add(u: &Vec<f64>, v: &Vec<f64>) -> Vec<f64> {
-    u.iter()
-        .zip(v.iter())
-        .map(|(a, b)| a + b)
-        .collect()
+    u.iter().zip(v.iter()).map(|(a, b)| a + b).collect()
 }
 
 pub fn sub(u: &Vec<f64>, v: &Vec<f64>) -> Vec<f64> {
-    u.iter()
-        .zip(v.iter())
-        .map(|(a, b)| a - b)
-        .collect()
+    u.iter().zip(v.iter()).map(|(a, b)| a - b).collect()
 }
 
 fn scalar_mul(a: f64, u: &Vec<f64>) -> Vec<f64> {
-    u.iter()
-        .map(|b| a * b)
-        .collect()
+    u.iter().map(|b| a * b).collect()
 }
 
 pub struct QR {
@@ -421,7 +412,7 @@ impl LU {
         }
         for i in 0..self.n {
             if self.u.get_unchecked(i, i) == 0.0 {
-                return Err(MatrixError::NotInvertible.into())
+                return Err(MatrixError::NotInvertible.into());
             }
         }
         let mut l_result = vec![0.0; v.len()];
@@ -435,7 +426,7 @@ impl LU {
         let mut u_result = vec![0.0; l_result.len()];
         for i in (0..l_result.len()).rev() {
             u_result[i] = l_result[i];
-            for j in i+1..l_result.len() {
+            for j in i + 1..l_result.len() {
                 u_result[i] -= u_result[j] * self.u.get_unchecked(i, j);
             }
             u_result[i] /= self.u.get_unchecked(i, i);
@@ -464,23 +455,16 @@ impl Error for MatrixError {}
 mod tests {
     use super::*;
 
-
     fn round(u: &Vec<f64>, places: i32) -> Vec<f64> {
         let shift = 10.0_f64.powi(places);
-        let elements = u.iter()
-            .map(|a| (a * shift).round() / shift)
-            .collect();
+        let elements = u.iter().map(|a| (a * shift).round() / shift).collect();
         elements
     }
 
     #[test]
     fn test_matrix_new_size_mismatch() {
         let a = Matrix::new(
-            vec![
-                1.0, 2.0, 3.0,
-                4.0, 5.0, 6.0,
-                7.0, 8.0, 9.0, 10.0,
-            ],
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
             3,
             3,
         );
@@ -492,123 +476,63 @@ mod tests {
     #[test]
     fn test_matrix_identity() {
         let result = Matrix::identity(3, 3);
-        let expected_result = Matrix::new(
-            vec![
-                1.0, 0.0, 0.0,
-                0.0, 1.0, 0.0,
-                0.0, 0.0, 1.0,
-            ],
-            3,
-            3,
-        ).unwrap();
+        let expected_result =
+            Matrix::new(vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0], 3, 3).unwrap();
         assert_eq!(result, expected_result);
     }
 
     #[test]
     fn test_multiply_square_matrix() {
-        let a = Matrix::new(
-            vec![
-                1.0, 2.0, 3.0,
-                4.0, 5.0, 6.0,
-                7.0, 8.0, 9.0,
-            ],
-            3,
-            3,
-        ).unwrap();
+        let a = Matrix::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0], 3, 3).unwrap();
         let b = Matrix::new(
-            vec![
-                10.0, 11.0, 12.0,
-                13.0, 14.0, 15.0,
-                16.0, 17.0, 18.0,
-            ],
+            vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0],
             3,
             3,
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = a.mul(&b).unwrap();
 
         let expected_result = Matrix::new(
-            vec![
-                84.0, 90.0, 96.0,
-                201.0, 216.0, 231.0,
-                318.0, 342.0, 366.0,
-            ],
+            vec![84.0, 90.0, 96.0, 201.0, 216.0, 231.0, 318.0, 342.0, 366.0],
             3,
             3,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(result, expected_result)
     }
 
     #[test]
     fn test_transpose() {
-        let a = Matrix::new(
-            vec![
-                1.0, 2.0,
-                3.0, 4.0,
-                5.0, 6.0,
-            ],
-            3,
-            2,
-        ).unwrap();
+        let a = Matrix::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 3, 2).unwrap();
 
         let result = a.transpose();
-        let expected_result = Matrix::new(
-            vec![
-                1.0, 3.0, 5.0,
-                2.0, 4.0, 6.0,
-            ],
-            2,
-            3,
-        ).unwrap();
+        let expected_result = Matrix::new(vec![1.0, 3.0, 5.0, 2.0, 4.0, 6.0], 2, 3).unwrap();
 
         assert_eq!(result, expected_result);
     }
 
     #[test]
     fn test_round() {
-        let a = Matrix::new(
-            vec![
-                1.0001,
-                2.0005,
-            ],
-            2,
-            1,
-        ).unwrap();
+        let a = Matrix::new(vec![1.0001, 2.0005], 2, 1).unwrap();
 
         let result = a.round(3);
 
-        let expected = Matrix::new(
-            vec![
-                1.0,
-                2.001,
-            ],
-            2,
-            1
-        ).unwrap();
+        let expected = Matrix::new(vec![1.0, 2.001], 2, 1).unwrap();
         assert_eq!(result, expected);
     }
 
     #[test]
     fn test_qr_decomp() {
-        let a: SquareMatrix = Matrix::new(
-            vec![
-                1.0, 2.0,
-                3.0, 4.0,
-            ],
-            2,
-            2,
-        ).unwrap().try_into().unwrap();
+        let a: SquareMatrix = Matrix::new(vec![1.0, 2.0, 3.0, 4.0], 2, 2)
+            .unwrap()
+            .try_into()
+            .unwrap();
 
         let result = a.qr_decomp();
-        
-        let expected_q = Matrix::new(vec![
-            0.316, 0.949,
-            0.949, -0.316
-        ], 2, 2).unwrap();
-        let expected_r = Matrix::new(vec![
-            3.162, 4.427,
-            0.0, 0.632,
-        ], 2, 2).unwrap();
+
+        let expected_q = Matrix::new(vec![0.316, 0.949, 0.949, -0.316], 2, 2).unwrap();
+        let expected_r = Matrix::new(vec![3.162, 4.427, 0.0, 0.632], 2, 2).unwrap();
 
         // should probably check the delta is small but this gives better
         // error messages
@@ -618,10 +542,10 @@ mod tests {
 
     #[test]
     fn test_eigen_values() {
-        let a: SquareMatrix = Matrix::new(vec![
-            1.0, 2.0,
-            3.0, 4.0,
-        ], 2, 2).unwrap().try_into().unwrap();
+        let a: SquareMatrix = Matrix::new(vec![1.0, 2.0, 3.0, 4.0], 2, 2)
+            .unwrap()
+            .try_into()
+            .unwrap();
 
         let result = round(&a.eigen_values(0.01, 5), 3);
 
@@ -631,11 +555,7 @@ mod tests {
 
     #[test]
     fn test_mean_row() {
-        let a = Matrix::new(vec![
-            1.0, 2.0,
-            3.0, 4.0,
-            5.0, 9.0,
-        ], 3, 2).unwrap();
+        let a = Matrix::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 9.0], 3, 2).unwrap();
 
         let result = a.mean_row();
 
@@ -646,32 +566,17 @@ mod tests {
 
     #[test]
     fn test_lu_decomp() {
-        let a: SquareMatrix = Matrix::new(vec![
-            1.0, 2.0, 3.0,
-            3.0, 2.0, 1.0,
-            1.0, 2.0, 1.0,
-        ], 3, 3).unwrap().try_into().unwrap();
+        let a: SquareMatrix = Matrix::new(vec![1.0, 2.0, 3.0, 3.0, 2.0, 1.0, 1.0, 2.0, 1.0], 3, 3)
+            .unwrap()
+            .try_into()
+            .unwrap();
 
         let result = a.lu_decomp();
 
-        let expected_l = Matrix::new(
-            vec![
-                1.0, 0.0, 0.0,
-                3.0, 1.0, 0.0,
-                1.0, 0.0, 1.0,
-            ],
-            3,
-            3
-        ).unwrap();
-        let expected_u = Matrix::new(
-            vec![
-                1.0, 2.0, 3.0,
-                0.0, -4.0, -8.0,
-                0.0, 0.0, -2.0,
-            ],
-            3,
-            3
-        ).unwrap();
+        let expected_l =
+            Matrix::new(vec![1.0, 0.0, 0.0, 3.0, 1.0, 0.0, 1.0, 0.0, 1.0], 3, 3).unwrap();
+        let expected_u =
+            Matrix::new(vec![1.0, 2.0, 3.0, 0.0, -4.0, -8.0, 0.0, 0.0, -2.0], 3, 3).unwrap();
 
         assert_eq!(result.l, expected_l);
         assert_eq!(result.u, expected_u);
@@ -679,11 +584,10 @@ mod tests {
 
     #[test]
     fn test_lu_solve_for_vec() {
-        let a: SquareMatrix = Matrix::new(vec![
-            1.0, 2.0, 3.0,
-            3.0, 2.0, 1.0,
-            1.0, 2.0, 1.0,
-        ], 3, 3).unwrap().try_into().unwrap();
+        let a: SquareMatrix = Matrix::new(vec![1.0, 2.0, 3.0, 3.0, 2.0, 1.0, 1.0, 2.0, 1.0], 3, 3)
+            .unwrap()
+            .try_into()
+            .unwrap();
         let lu = a.lu_decomp();
         let v = vec![1.0, 2.0, 3.0];
 
@@ -696,41 +600,32 @@ mod tests {
 
     #[test]
     fn test_lu_solve_for_vec_error_if_not_invertible() {
-        let a: SquareMatrix = Matrix::new(vec![
-            1.0, 2.0, 3.0,
-            4.0, 5.0, 6.0,
-            7.0, 8.0, 9.0,
-        ], 3, 3).unwrap().try_into().unwrap();
+        let a: SquareMatrix = Matrix::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0], 3, 3)
+            .unwrap()
+            .try_into()
+            .unwrap();
         let lu = a.lu_decomp();
         let v = vec![1.0, 2.0, 3.0];
 
-        let err: Option<MatrixError> = lu.solve_for_vec(&v)
-            .err()
-            .map(|e| e.downcast().unwrap());
+        let err: Option<MatrixError> = lu.solve_for_vec(&v).err().map(|e| e.downcast().unwrap());
 
         assert_eq!(err, Some(MatrixError::NotInvertible));
     }
 
     #[test]
     fn test_get_eigen_vectors() {
-        let a: SquareMatrix = Matrix::new(vec![
-            3.0, 4.0, -2.0,
-            1.0, 4.0, -1.0,
-            2.0, 6.0, -1.0,
-        ], 3, 3).unwrap().try_into().unwrap();
+        let a: SquareMatrix =
+            Matrix::new(vec![3.0, 4.0, -2.0, 1.0, 4.0, -1.0, 2.0, 6.0, -1.0], 3, 3)
+                .unwrap()
+                .try_into()
+                .unwrap();
 
         let eigen_vectors: Matrix = a.eigen_vectors(0.01, 5, 100).unwrap().into();
 
-        let expected_result = Matrix::new(
-            vec![
-                0.5, 0.0, 1.0,
-                0.5, 0.5, 0.0,
-                1.0, 1.0, 1.0,
-            ],
-            3,
-            3,
-        ).unwrap();
+        let expected_result =
+            Matrix::new(vec![0.5, 0.0, 1.0, 0.5, 0.5, 0.0, 1.0, 1.0, 1.0], 3, 3).unwrap();
 
         assert_eq!(eigen_vectors.round(3), expected_result);
     }
 }
+
