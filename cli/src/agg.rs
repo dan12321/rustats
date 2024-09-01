@@ -28,10 +28,7 @@ pub fn agg_main(args: AggArgs) {
     let reader: Box<dyn BufRead> = match util::get_buff_reader(&args.filename) {
         Ok(br) => br,
         Err(e) => {
-            eprintln!(
-                "Could not read file due to error: {}",
-                e.to_string()
-            );
+            eprintln!("Could not read file due to error: {}", e.to_string());
             return;
         }
     };
@@ -45,7 +42,7 @@ pub fn agg_main(args: AggArgs) {
                 Err(e) => {
                     eprintln!("{}", e);
                     return;
-                },
+                }
             }
         } else {
             eprintln!("No file provided. --datatype must be specified");
@@ -74,7 +71,7 @@ pub fn agg_main(args: AggArgs) {
                     return;
                 }
             }
-        },
+        }
         None => {
             let agg = table.num_agg(&args.column);
             match agg {
@@ -84,7 +81,8 @@ pub fn agg_main(args: AggArgs) {
                     return;
                 }
             }
-        },
+        }
     };
     println!("{}", agg.to_csv(&args.csv_delim));
 }
+

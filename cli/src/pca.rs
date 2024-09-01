@@ -23,10 +23,7 @@ pub fn pca_main(args: PcaArgs) {
     let reader: Box<dyn BufRead> = match util::get_buff_reader(&args.filename) {
         Ok(br) => br,
         Err(e) => {
-            eprintln!(
-                "Could not read file due to error: {}",
-                e.to_string()
-            );
+            eprintln!("Could not read file due to error: {}", e.to_string());
             return;
         }
     };
@@ -40,7 +37,7 @@ pub fn pca_main(args: PcaArgs) {
                 Err(e) => {
                     eprintln!("{}", e);
                     return;
-                },
+                }
             }
         } else {
             eprintln!("No file provided. --datatype must be specified");
@@ -67,4 +64,3 @@ pub fn pca_main(args: PcaArgs) {
     }
     println!("{}", table.to_csv(&args.csv_delim));
 }
-

@@ -35,10 +35,7 @@ pub fn hist_main(args: HistArgs) {
     let reader: Box<dyn BufRead> = match util::get_buff_reader(&args.filename) {
         Ok(br) => br,
         Err(e) => {
-            eprintln!(
-                "Could not read file due to error: {}",
-                e.to_string()
-            );
+            eprintln!("Could not read file due to error: {}", e.to_string());
             return;
         }
     };
@@ -52,7 +49,7 @@ pub fn hist_main(args: HistArgs) {
                 Err(e) => {
                     eprintln!("{}", e);
                     return;
-                },
+                }
             }
         } else {
             eprintln!("No file provided. --datatype must be specified");
@@ -79,4 +76,3 @@ pub fn hist_main(args: HistArgs) {
     };
     println!("{}", result.to_csv(&args.csv_delim));
 }
-

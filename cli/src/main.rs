@@ -1,12 +1,12 @@
 mod agg;
+mod hist;
 mod pca;
 mod util;
-mod hist;
 
 use agg::AggArgs;
 use clap::{Parser, Subcommand};
-use pca::PcaArgs;
 use hist::HistArgs;
+use pca::PcaArgs;
 
 /// Tools for Stats
 #[derive(Debug, Parser)]
