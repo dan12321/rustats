@@ -12,6 +12,9 @@ pub struct PcaArgs {
     /// The format of the file
     #[arg(value_enum, short, long)]
     datatype: Option<DataType>,
+    /// The format of the file
+    #[arg(short, long)]
+    round_places: Option<i32>,
     /// File containing data
     filename: Option<PathBuf>,
     /// CSV delimiter
@@ -55,7 +58,7 @@ pub fn pca_main(args: PcaArgs) {
             return;
         }
     };
-    match table.pca() {
+    match table.pca(args.round_places) {
         Ok(()) => (),
         Err(e) => {
             eprintln!("Error calculating pca: {}", e);

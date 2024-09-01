@@ -60,7 +60,7 @@ pub fn hist_main(args: HistArgs) {
     let table = match datatype {
         DataType::CSV => Table::from_csv(reader, &args.csv_delim),
     };
-    let mut table = match table {
+    let table = match table {
         Ok(t) => t,
         Err(e) => {
             eprintln!("Error parsing data: {}", e);

@@ -50,25 +50,6 @@ impl Matrix {
         })
     }
 
-    pub fn vec_mul(&self, vec: &Vec<f64>) -> Result<Vec<f64>> {
-        if self.width != vec.len() {
-            return Err(MatrixError::SizeMismatch.into());
-        }
-
-        let mut result: Vec<f64> = Vec::with_capacity(vec.len());
-        for i in 0..self.height {
-            let mut value = 0.0;
-            for j in 0..self.width {
-                let a = self.get_unchecked(i, j);
-                let b = vec[j];
-                value += a * b;
-            }
-
-            result.push(value);
-        }
-        Ok(result)
-    }
-
     pub fn scalar_mul(&self, value: f64) -> Self {
         let elements: Vec<f64> = self.elements.iter().map(|a| a * value).collect();
 
@@ -88,23 +69,6 @@ impl Matrix {
             .iter()
             .zip(matrix.elements.iter())
             .map(|(a, b)| a - b)
-            .collect();
-        Ok(Self {
-            elements,
-            width: self.width,
-            height: self.height,
-        })
-    }
-
-    pub fn add(&self, matrix: Self) -> Result<Self> {
-        if self.width != matrix.width || self.height != matrix.height {
-            return Err(MatrixError::SizeMismatch.into());
-        }
-        let elements = self
-            .elements
-            .iter()
-            .zip(matrix.elements.iter())
-            .map(|(a, b)| a + b)
             .collect();
         Ok(Self {
             elements,
@@ -207,10 +171,6 @@ impl Matrix {
 
     pub fn height(&self) -> usize {
         self.height
-    }
-
-    pub fn width(&self) -> usize {
-        self.width
     }
 }
 
@@ -366,7 +326,7 @@ pub fn dot(u: &Vec<f64>, v: &Vec<f64>) -> f64 {
 pub fn matrix_rows(u: &Vec<f64>, height: usize) -> Matrix {
     Matrix {
         elements: u.repeat(height),
-        height: height,
+        height,
         width: u.len(),
     }
 }

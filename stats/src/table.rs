@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 
 use crate::{
     agg::AggNumBuilder,
-    hist::{self, Hist},
+    hist::Hist,
     linalg::Matrix,
     pca::pca,
 };
@@ -269,9 +269,9 @@ impl Table {
         lines.join("\n")
     }
 
-    pub fn pca(&mut self) -> Result<()> {
+    pub fn pca(&mut self, round_places: Option<i32>) -> Result<()> {
         let data = self.get_matrix().context("Get matrix from table")?;
-        let pca_data = pca(data)?;
+        let pca_data = pca(data, round_places)?;
         self.numerics_from_matrix(&pca_data)?;
         let mut pca_i = 1;
         for i in 0..self.headers.len() {
