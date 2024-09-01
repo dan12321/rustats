@@ -2,7 +2,7 @@ use std::{collections::HashMap, error::Error, fmt::Display, io::BufRead};
 
 use anyhow::{Context, Result};
 
-use crate::{linalg::Matrix, pca::pca};
+use crate::{agg::AggNumBuilder, linalg::Matrix, pca::pca, hist::{self, Hist}};
 
 #[derive(Debug)]
 pub struct Table {
@@ -327,11 +327,48 @@ impl Table {
         ).context("Create new matrix")
     }
 
-    pub fn numerics_from_matrix(&mut self, matrix: &Matrix) -> Result<()> {
+    fn numerics_from_matrix(&mut self, matrix: &Matrix) -> Result<()> {
         for i in 0..self.numerics.len() {
             self.numerics[i] = matrix.get_col(i)?;
         }
         Ok(())
+    }
+
+    pub fn hist(&self, column: &str, width: f64, min: Option<f64>, max: Option<f64>) -> Result<Self> {
+        let head_i = match self.headers.iter().position(|h| h == column) {
+            Some(i) => i,
+            None => return Err(TableError::ColumnNotFound.into()),
+        };
+        let col = match self.col_to_numeric[head_i] {
+            Some(i) => &self.numerics[i],
+            None => return Err(TableError::ColumnNotNumeric.into()),
+        };
+
+        let hist = Hist::hist(col, width, min, max);
+        Ok(Self {
+            headers: vec![
+                column.to_string(),
+                "count".to_string(),
+            ],
+            col_types: vec![
+                ColType::Numeric,
+                ColType::Numeric,
+            ],
+            col_to_numeric: vec![
+                Some(0),
+                Some(1),
+            ],
+            col_to_string: vec![
+                None,
+                None,
+            ],
+            numerics: vec![
+                hist.buckets,
+                hist.counts,
+            ],
+            strings: vec![],
+            len: hist.len,
+        })
     }
 }
 
@@ -369,97 +406,3 @@ impl Display for TableParserError {
 }
 
 impl Error for TableParserError {}
-
-#[derive(Debug)]
-pub struct AggNum {
-    pub mean: f64,
-    // index value pairs
-    pub min: f64,
-    pub max: f64,
-    pub count: usize,
-    pub stddev: f64,
-}
-
-#[derive(Debug)]
-struct AggNumBuilder {
-    sum: f64,
-    squared_sum: f64,
-    len: usize,
-    // index value pairs
-    min: Option<f64>,
-    max: Option<f64>,
-}
-
-impl AggNumBuilder {
-    fn new() -> Self {
-        Self {
-            sum: 0.0,
-            squared_sum: 0.0,
-            len: 0,
-            min: None,
-            max: None,
-        }
-    }
-
-    fn add_val(&mut self, val: f64) {
-        self.sum += val;
-        self.squared_sum += val * val;
-        self.len += 1;
-
-        if let Some(min) = self.min {
-            if min > val {
-                self.min = Some(val)
-            }
-        } else {
-            self.min = Some(val)
-        }
-
-        if let Some(max) = self.max {
-            if max < val {
-                self.max = Some(val)
-            }
-        } else {
-            self.max = Some(val)
-        }
-    }
-
-    fn build(&self) -> Result<AggNum> {
-        let max = match self.max {
-            Some(m) => m,
-            None => {
-                return Err(AggNumBuilderError::NoMax.into());
-            }
-        };
-        let min = match self.min {
-            Some(m) => m,
-            None => {
-                return Err(AggNumBuilderError::NoMin.into());
-            }
-        };
-
-        let mean = self.sum / self.len as f64;
-        let stddev = ((self.squared_sum / self.len as f64) - mean * mean).sqrt();
-
-        Ok(AggNum {
-            mean,
-            min,
-            max,
-            count: self.len,
-            stddev,
-        })
-    }
-}
-
-#[derive(Debug)]
-enum AggNumBuilderError {
-    NoMin,
-    NoMax,
-}
-
-impl Display for AggNumBuilderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl Error for AggNumBuilderError {}

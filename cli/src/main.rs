@@ -1,10 +1,12 @@
 mod agg;
 mod pca;
 mod util;
+mod hist;
 
 use agg::AggArgs;
 use clap::{Parser, Subcommand};
 use pca::PcaArgs;
+use hist::HistArgs;
 
 /// Tools for Stats
 #[derive(Debug, Parser)]
@@ -24,7 +26,11 @@ enum Tool {
 
     /// Aggregate data
     #[command(version, about, long_about = None)]
-    Agg(AggArgs)
+    Agg(AggArgs),
+
+    /// Histogram
+    #[command(version, about, long_about = None)]
+    Hist(HistArgs),
 }
 
 fn main() {
@@ -32,5 +38,6 @@ fn main() {
     match cli.tool {
         Tool::PCA(args) => pca::pca_main(args),
         Tool::Agg(args) => agg::agg_main(args),
+        Tool::Hist(args) => hist::hist_main(args),
     }
 }
