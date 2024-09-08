@@ -1,7 +1,8 @@
 use std::{io::BufRead, path::PathBuf};
 
+use anyhow::Result;
 use clap::Args;
-use stats::table::Table;
+use stats::table::{TableFull, TableStream, Aggragate};
 
 use crate::util::{self, DataType};
 
@@ -15,9 +16,15 @@ pub struct AggArgs {
     /// The format of the file
     #[arg(value_enum, short, long)]
     datatype: Option<DataType>,
+    /// Whether to sort by the group name
+    #[arg(long)]
+    sort: bool,
     /// CSV delimiter
     #[arg(short, long, default_value_t = String::from(","))]
     csv_delim: String,
+    /// Aggregate as parsing line by line
+    #[arg(short, long, default_value_t = false)]
+    stream: bool,
     /// The name of the column to aggregate
     column: String,
     /// File containing data
@@ -50,11 +57,19 @@ pub fn agg_main(args: AggArgs) {
         }
     };
 
-    let table = match datatype {
-        DataType::CSV => Table::from_csv(reader, &args.csv_delim),
+    let table: Result<Box<dyn Aggragate>> = if args.stream {
+        match datatype {
+            DataType::CSV => TableStream::from_csv(reader, &args.csv_delim)
+                .map(|t| Box::from(t) as Box<dyn Aggragate>),
+        }
+    } else {
+        match datatype {
+            DataType::CSV => TableFull::from_csv(reader, &args.csv_delim)
+                .map(|t| Box::from(t) as Box<dyn Aggragate>),
+        }
     };
-    let table = match table {
-        Ok(t) => t,
+    let mut table: Box<dyn Aggragate> = match table {
+        Ok(t) => Box::from(t),
         Err(e) => {
             eprintln!("Error parsing data: {}", e);
             return;
@@ -62,25 +77,14 @@ pub fn agg_main(args: AggArgs) {
     };
 
     let agg = match args.group_by {
-        Some(group_by) => {
-            let aggs = table.group_num_agg(&args.column, &group_by);
-            match aggs {
-                Ok(a) => a,
-                Err(e) => {
-                    eprintln!("Error calculating aggregate data: {}", e);
-                    return;
-                }
-            }
-        }
-        None => {
-            let agg = table.num_agg(&args.column);
-            match agg {
-                Ok(a) => a,
-                Err(e) => {
-                    eprintln!("Error calculating aggregate data: {}", e);
-                    return;
-                }
-            }
+        Some(group_by) => table.group_num_agg(&args.column, &group_by, args.sort),
+        None => table.num_agg(&args.column),
+    };
+    let agg = match agg {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("Error calculating aggregate data: {}", e);
+            return;
         }
     };
     println!("{}", agg.to_csv(&args.csv_delim));

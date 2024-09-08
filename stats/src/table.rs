@@ -1,16 +1,27 @@
-use std::{collections::HashMap, error::Error, fmt::Display, io::BufRead};
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt::Display,
+    io::{BufRead, Lines},
+};
 
 use anyhow::{Context, Result};
 
-use crate::{
-    agg::AggNumBuilder,
-    hist::Hist,
-    linalg::Matrix,
-    pca::pca,
-};
+use crate::{agg::AggNumBuilder, hist::Hist, linalg::Matrix, pca::pca, util::sorted_insert};
+
+#[derive(Debug, PartialEq)]
+enum ColType {
+    Numeric,
+    String,
+}
+
+pub trait Aggragate {
+    fn group_num_agg(&mut self, col_name: &str, group_col_name: &str, sort: bool) -> Result<TableFull>;
+    fn num_agg(&mut self, col_name: &str) -> Result<TableFull>;
+}
 
 #[derive(Debug)]
-pub struct Table {
+pub struct TableFull {
     headers: Vec<String>,
     col_types: Vec<ColType>,
     numerics: Vec<Vec<f64>>,
@@ -20,13 +31,7 @@ pub struct Table {
     len: usize,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum ColType {
-    Numeric,
-    String,
-}
-
-impl Table {
+impl TableFull {
     pub fn from_csv(reader: Box<dyn BufRead>, delimiter: &str) -> Result<Self> {
         let context = "Parsing CSV to Table";
 
@@ -35,7 +40,7 @@ impl Table {
         while headers.starts_with("#") {
             headers = match lines.next() {
                 Some(l) => l.context(context)?,
-                None => return Err(TableParserError::EmptyFile).context(context)?,
+                None => return Err(TableParserError::EmptyFile)?,
             };
         }
         let headers: Vec<String> = headers
@@ -106,7 +111,7 @@ impl Table {
             line_num += 1;
         }
 
-        Ok(Table {
+        Ok(Self {
             headers,
             col_types,
             numerics,
@@ -115,134 +120,6 @@ impl Table {
             col_to_string,
             len: line_num - 1,
         })
-    }
-
-    pub fn num_agg(&self, col_name: &str) -> Result<Self> {
-        let col_index = self.headers.iter().position(|h| h == col_name);
-        let num_index = if let Some(c) = col_index {
-            self.col_to_numeric[c]
-        } else {
-            return Err(TableError::ColumnNotFound.into());
-        };
-        let col = if let Some(ni) = num_index {
-            &self.numerics[ni]
-        } else {
-            return Err(TableError::ColumnNotNumeric.into());
-        };
-
-        let mut agg_builder = AggNumBuilder::new();
-
-        for val in col.iter() {
-            agg_builder.add_val(*val);
-        }
-
-        let agg = agg_builder.build()?;
-
-        Ok(Table {
-            headers: vec![
-                "min".into(),
-                "max".into(),
-                "mean".into(),
-                "count".into(),
-                "stddev".into(),
-            ],
-            col_types: vec![
-                ColType::Numeric,
-                ColType::Numeric,
-                ColType::Numeric,
-                ColType::Numeric,
-                ColType::Numeric,
-            ],
-            col_to_numeric: vec![Some(0), Some(1), Some(2), Some(3), Some(4)],
-            col_to_string: vec![None, None, None, None, None],
-            numerics: vec![
-                vec![agg.min],
-                vec![agg.max],
-                vec![agg.mean],
-                vec![agg.count as f64],
-                vec![agg.stddev],
-            ],
-            strings: vec![],
-            len: 1,
-        })
-    }
-
-    pub fn group_num_agg(&self, col_name: &str, group_col_name: &str) -> Result<Table> {
-        let col_index = self.headers.iter().position(|h| h == col_name);
-        let num_index = if let Some(c) = col_index {
-            self.col_to_numeric[c]
-        } else {
-            return Err(TableError::ColumnNotFound.into());
-        };
-        let col = if let Some(ni) = num_index {
-            &self.numerics[ni]
-        } else {
-            return Err(TableError::ColumnNotNumeric.into());
-        };
-
-        let group_index = match self.headers.iter().position(|h| h == group_col_name) {
-            Some(i) => i,
-            None => return Err(TableError::GroupColumnNotFound.into()),
-        };
-        let group_string_index = match self.col_types[group_index] {
-            ColType::Numeric => return Err(TableError::GroupOnNumericNotImplemented.into()),
-            ColType::String => self.col_to_string[group_index],
-        };
-        let group_col = match group_string_index {
-            Some(i) => &self.strings[i],
-            None => return Err(TableError::GroupColumnNotString.into()),
-        };
-
-        let mut builder_map = HashMap::<String, AggNumBuilder>::new();
-
-        for (i, val) in col.iter().enumerate() {
-            let group_name = group_col[i].clone();
-            match builder_map.get_mut(&group_name) {
-                Some(agg_builder) => agg_builder.add_val(*val),
-                None => {
-                    let mut agg_builder = AggNumBuilder::new();
-                    agg_builder.add_val(*val);
-                    builder_map.insert(group_name, agg_builder);
-                }
-            }
-        }
-
-        let mut table = Table {
-            headers: vec![
-                group_col_name.into(),
-                "min".into(),
-                "max".into(),
-                "mean".into(),
-                "count".into(),
-                "stddev".into(),
-            ],
-            col_types: vec![
-                ColType::String,
-                ColType::Numeric,
-                ColType::Numeric,
-                ColType::Numeric,
-                ColType::Numeric,
-                ColType::Numeric,
-            ],
-            col_to_string: vec![Some(0), None, None, None, None, None],
-            col_to_numeric: vec![None, Some(0), Some(1), Some(2), Some(3), Some(4)],
-            strings: vec![vec![]],
-            numerics: vec![vec![], vec![], vec![], vec![], vec![]],
-            len: 0,
-        };
-
-        for (g, ab) in builder_map {
-            let agg = ab.build().unwrap();
-            table.strings[0].push(g);
-            table.numerics[0].push(agg.min);
-            table.numerics[1].push(agg.max);
-            table.numerics[2].push(agg.mean);
-            table.numerics[3].push(agg.count as f64);
-            table.numerics[4].push(agg.stddev);
-            table.len += 1;
-        }
-
-        Ok(table)
     }
 
     pub fn to_csv(&self, delimiter: &str) -> String {
@@ -326,6 +203,329 @@ impl Table {
             strings: vec![],
             len: hist.len,
         })
+    }
+
+    fn new_agg_table(group: Option<String>) -> Self {
+        match group {
+            Some(g) => TableFull {
+                headers: vec![
+                    g,
+                    "min".into(),
+                    "max".into(),
+                    "mean".into(),
+                    "count".into(),
+                    "stddev".into(),
+                ],
+                col_types: vec![
+                    ColType::String,
+                    ColType::Numeric,
+                    ColType::Numeric,
+                    ColType::Numeric,
+                    ColType::Numeric,
+                    ColType::Numeric,
+                ],
+                col_to_string: vec![Some(0), None, None, None, None, None],
+                col_to_numeric: vec![None, Some(0), Some(1), Some(2), Some(3), Some(4)],
+                strings: vec![vec![]],
+                numerics: vec![vec![], vec![], vec![], vec![], vec![]],
+                len: 0,
+            },
+            None => TableFull {
+                headers: vec![
+                    "min".into(),
+                    "max".into(),
+                    "mean".into(),
+                    "count".into(),
+                    "stddev".into(),
+                ],
+                col_types: vec![
+                    ColType::Numeric,
+                    ColType::Numeric,
+                    ColType::Numeric,
+                    ColType::Numeric,
+                    ColType::Numeric,
+                ],
+                col_to_string: vec![None, None, None, None, None],
+                col_to_numeric: vec![Some(0), Some(1), Some(2), Some(3), Some(4)],
+                strings: vec![],
+                numerics: vec![vec![], vec![], vec![], vec![], vec![]],
+                len: 0,
+            },
+        }
+    }
+}
+
+impl Aggragate for TableFull {
+    fn num_agg(&mut self, col_name: &str) -> Result<TableFull> {
+        let col_index = self.headers.iter().position(|h| h == col_name);
+        let num_index = if let Some(c) = col_index {
+            self.col_to_numeric[c]
+        } else {
+            return Err(TableError::ColumnNotFound.into());
+        };
+        let col = if let Some(ni) = num_index {
+            &self.numerics[ni]
+        } else {
+            return Err(TableError::ColumnNotNumeric.into());
+        };
+
+        let mut agg_builder = AggNumBuilder::new();
+
+        for val in col.iter() {
+            agg_builder.add_val(*val);
+        }
+
+        let agg = agg_builder.build()?;
+
+        let mut table = TableFull::new_agg_table(None);
+        table.numerics[0].push(agg.min);
+        table.numerics[1].push(agg.max);
+        table.numerics[2].push(agg.mean);
+        table.numerics[3].push(agg.count as f64);
+        table.numerics[4].push(agg.stddev);
+        table.len = 1;
+
+        Ok(table)
+    }
+
+    fn group_num_agg(&mut self, col_name: &str, group_col_name: &str, sort: bool) -> Result<TableFull> {
+        let col_index = self.headers.iter().position(|h| h == col_name);
+        let num_index = if let Some(c) = col_index {
+            self.col_to_numeric[c]
+        } else {
+            return Err(TableError::ColumnNotFound.into());
+        };
+        let col = if let Some(ni) = num_index {
+            &self.numerics[ni]
+        } else {
+            return Err(TableError::ColumnNotNumeric.into());
+        };
+
+        let group_index = match self.headers.iter().position(|h| h == group_col_name) {
+            Some(i) => i,
+            None => return Err(TableError::GroupColumnNotFound.into()),
+        };
+        let group_string_index = match self.col_types[group_index] {
+            ColType::Numeric => return Err(TableError::GroupOnNumericNotImplemented.into()),
+            ColType::String => self.col_to_string[group_index],
+        };
+        let group_col = match group_string_index {
+            Some(i) => &self.strings[i],
+            None => return Err(TableError::GroupColumnNotString.into()),
+        };
+
+        let mut builder_map = HashMap::<String, AggNumBuilder>::new();
+        let mut groups: Vec<&str> = Vec::new();
+
+        for (i, val) in col.iter().enumerate() {
+            let group_name = group_col[i].clone();
+            match builder_map.get_mut(&group_name) {
+                Some(agg_builder) => agg_builder.add_val(*val),
+                None => {
+                    let mut agg_builder = AggNumBuilder::new();
+                    agg_builder.add_val(*val);
+                    builder_map.insert(group_name, agg_builder);
+                    if sort {
+                        sorted_insert(&mut groups, &group_col[i]);
+                    } else {
+                        groups.push(&group_col[i]);
+                    }
+                }
+            }
+        }
+
+        let mut table = TableFull::new_agg_table(Some(group_col_name.into()));
+
+        for group in groups {
+            let ab = &builder_map[group];
+            let agg = ab.build().unwrap();
+            table.strings[0].push(group.to_string());
+            table.numerics[0].push(agg.min);
+            table.numerics[1].push(agg.max);
+            table.numerics[2].push(agg.mean);
+            table.numerics[3].push(agg.count as f64);
+            table.numerics[4].push(agg.stddev);
+            table.len += 1;
+        }
+
+        Ok(table)
+    }
+}
+
+pub struct TableStream {
+    headers: Vec<String>,
+    col_types: Vec<ColType>,
+    first_numerics: Vec<f64>,
+    first_strings: Vec<String>,
+    col_to_numeric: Vec<Option<usize>>,
+    col_to_string: Vec<Option<usize>>,
+    lines: Lines<Box<dyn BufRead>>,
+    delimiter: String,
+}
+
+impl TableStream {
+    pub fn from_csv(reader: Box<dyn BufRead>, delimiter: &str) -> Result<Self> {
+        let context = "Parsing CSV to Table";
+
+        let mut lines = reader.lines();
+        let mut headers = String::from("#");
+        while headers.starts_with("#") {
+            headers = match lines.next() {
+                Some(l) => l.context(context)?,
+                None => return Err(TableParserError::EmptyFile.into()),
+            };
+        }
+        let headers: Vec<String> = headers
+            .split(delimiter)
+            .map(|h| h.trim().to_string())
+            .collect();
+
+        let first_line = match lines.next() {
+            Some(l) => l.context(context)?,
+            None => return Err(TableParserError::NoData).context(context)?,
+        };
+        let first_entries: Vec<&str> = first_line.split(delimiter).map(|l| l.trim()).collect();
+        if first_entries.len() != headers.len() {
+            return Err(TableParserError::LineSizeConflict(1)).context(context);
+        }
+        let mut col_types = Vec::<ColType>::with_capacity(headers.len());
+        let mut first_numerics = Vec::<f64>::with_capacity(headers.len());
+        let mut first_strings = Vec::<String>::with_capacity(headers.len());
+        let mut col_to_numeric = Vec::<Option<usize>>::with_capacity(headers.len());
+        let mut col_to_string = Vec::<Option<usize>>::with_capacity(headers.len());
+        for i in 0..first_entries.len() {
+            let num = first_entries[i].parse::<f64>();
+            if let Ok(n) = num {
+                col_types.push(ColType::Numeric);
+                let index = first_numerics.len();
+                col_to_numeric.push(Some(index));
+                col_to_string.push(None);
+                first_numerics.push(n);
+            } else {
+                col_types.push(ColType::String);
+                let value = first_entries[i].to_string();
+                let index = first_strings.len();
+                col_to_numeric.push(None);
+                col_to_string.push(Some(index));
+                first_strings.push(value);
+            }
+        }
+
+        Ok(Self {
+            headers,
+            col_types,
+            first_numerics,
+            first_strings,
+            col_to_numeric,
+            col_to_string,
+            lines,
+            delimiter: delimiter.to_string(),
+        })
+    }
+}
+
+impl Aggragate for TableStream {
+    fn num_agg(&mut self, col_name: &str) -> Result<TableFull> {
+        let col_index = match self.headers.iter().position(|h| h == col_name) {
+            Some(i) => i,
+            None => return Err(TableError::ColumnNotFound.into()),
+        };
+        let num_index = self.col_to_numeric[col_index];
+        let first_val = if let Some(ni) = num_index {
+            &self.first_numerics[ni]
+        } else {
+            return Err(TableError::ColumnNotNumeric.into());
+        };
+
+        let mut agg_builder = AggNumBuilder::new();
+        agg_builder.add_val(*first_val);
+
+        for line in &mut self.lines {
+            let line = line.context("Aggregating")?;
+            let parts: Vec<&str> = line.split(&self.delimiter).collect();
+            let val: f64 = parts[col_index].parse().context("Aggregating")?;
+            agg_builder.add_val(val);
+        }
+
+        let mut table = TableFull::new_agg_table(None);
+
+        let agg = agg_builder.build().unwrap();
+        table.numerics[0].push(agg.min);
+        table.numerics[1].push(agg.max);
+        table.numerics[2].push(agg.mean);
+        table.numerics[3].push(agg.count as f64);
+        table.numerics[4].push(agg.stddev);
+        table.len += 1;
+
+        Ok(table)
+    }
+
+    fn group_num_agg(&mut self, col_name: &str, group_col_name: &str, sort: bool) -> Result<TableFull> {
+        let col_index = match self.headers.iter().position(|h| h == col_name) {
+            Some(i) => i,
+            None => return Err(TableError::ColumnNotFound.into()),
+        };
+        let num_index = self.col_to_numeric[col_index];
+        let first_val = if let Some(ni) = num_index {
+            &self.first_numerics[ni]
+        } else {
+            return Err(TableError::ColumnNotNumeric.into());
+        };
+
+        let group_index = match self.headers.iter().position(|h| h == group_col_name) {
+            Some(i) => i,
+            None => return Err(TableError::GroupColumnNotFound.into()),
+        };
+        let group_string_index = match self.col_types[group_index] {
+            ColType::Numeric => return Err(TableError::GroupOnNumericNotImplemented.into()),
+            ColType::String => self.col_to_string[group_index],
+        };
+        let first_group = match group_string_index {
+            Some(i) => self.first_strings[i].clone(),
+            None => return Err(TableError::GroupColumnNotString.into()),
+        };
+
+        let mut builder_map = HashMap::<String, AggNumBuilder>::new();
+        let mut groups = Vec::new();
+        let mut first_group_agg = AggNumBuilder::new();
+        first_group_agg.add_val(*first_val);
+        builder_map.insert(first_group, first_group_agg);
+
+        for line in &mut self.lines {
+            let line = line.context("Aggregating by group")?;
+            let parts: Vec<&str> = line.split(&self.delimiter).collect();
+            let group_name = parts[group_index];
+            let val: f64 = parts[col_index].parse().context("Aggregating by group")?;
+            match builder_map.get_mut(group_name) {
+                Some(agg_builder) => agg_builder.add_val(val),
+                None => {
+                    let mut agg_builder = AggNumBuilder::new();
+                    agg_builder.add_val(val);
+                    builder_map.insert(group_name.to_string(), agg_builder);
+                    if sort {
+                        sorted_insert(&mut groups, group_name.to_string());
+                    } else {
+                        groups.push(group_name.to_string());
+                    }
+                }
+            }
+        }
+
+        let mut table = TableFull::new_agg_table(Some(group_col_name.into()));
+
+        for group in groups {
+            let ab = &builder_map[&group];
+            let agg = ab.build().unwrap();
+            table.strings[0].push(group.to_string());
+            table.numerics[0].push(agg.min);
+            table.numerics[1].push(agg.max);
+            table.numerics[2].push(agg.mean);
+            table.numerics[3].push(agg.count as f64);
+            table.numerics[4].push(agg.stddev);
+            table.len += 1;
+        }
+
+        Ok(table)
     }
 }
 

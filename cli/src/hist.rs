@@ -1,7 +1,7 @@
 use std::{io::BufRead, path::PathBuf};
 
 use clap::Args;
-use stats::table::Table;
+use stats::table::TableFull;
 
 use crate::util::{self, DataType};
 
@@ -58,7 +58,7 @@ pub fn hist_main(args: HistArgs) {
     };
 
     let table = match datatype {
-        DataType::CSV => Table::from_csv(reader, &args.csv_delim),
+        DataType::CSV => TableFull::from_csv(reader, &args.csv_delim),
     };
     let table = match table {
         Ok(t) => t,
