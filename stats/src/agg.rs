@@ -51,6 +51,28 @@ impl AggNumBuilder {
         }
     }
 
+    pub fn add(&mut self, agg: &AggNumBuilder) {
+        self.sum += agg.sum;
+        self.squared_sum += agg.squared_sum;
+        self.len += agg.len;
+
+        if let Some(val) = agg.min {
+            if let Some(min) = self.min {
+                self.min = Some(min.min(val))
+            } else {
+                self.min = Some(val);
+            }
+        }
+
+        if let Some(val) = agg.max {
+            if let Some(max) = self.max {
+                self.max = Some(max.max(val))
+            } else {
+                self.max = Some(val)
+            }
+        }
+    }
+
     pub fn build(&self) -> Result<AggNum> {
         let max = match self.max {
             Some(m) => m,

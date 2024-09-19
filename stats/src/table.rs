@@ -2,12 +2,21 @@ use std::{
     collections::HashMap,
     error::Error,
     fmt::Display,
-    io::{BufRead, Lines},
+    fs::OpenOptions,
+    io::{BufRead, BufReader, Lines, Seek, SeekFrom},
+    path::PathBuf,
+    sync::mpsc::{self, Receiver, Sender},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 
-use crate::{agg::AggNumBuilder, hist::Hist, linalg::Matrix, pca::pca, util::sorted_insert};
+use crate::{
+    agg::AggNumBuilder,
+    hist::Hist,
+    linalg::Matrix,
+    pca::pca,
+    util::sorted_insert,
+};
 
 #[derive(Debug, PartialEq)]
 enum ColType {
@@ -16,7 +25,12 @@ enum ColType {
 }
 
 pub trait Aggragate {
-    fn group_num_agg(&mut self, col_name: &str, group_col_name: &str, sort: bool) -> Result<TableFull>;
+    fn group_num_agg(
+        &mut self,
+        col_name: &str,
+        group_col_name: &str,
+        sort: bool,
+    ) -> Result<TableFull>;
     fn num_agg(&mut self, col_name: &str) -> Result<TableFull>;
 }
 
@@ -36,6 +50,7 @@ impl TableFull {
         let context = "Parsing CSV to Table";
 
         let mut lines = reader.lines();
+        // TODO: handle comments correctly throughout file
         let mut headers = String::from("#");
         while headers.starts_with("#") {
             headers = match lines.next() {
@@ -288,7 +303,12 @@ impl Aggragate for TableFull {
         Ok(table)
     }
 
-    fn group_num_agg(&mut self, col_name: &str, group_col_name: &str, sort: bool) -> Result<TableFull> {
+    fn group_num_agg(
+        &mut self,
+        col_name: &str,
+        group_col_name: &str,
+        sort: bool,
+    ) -> Result<TableFull> {
         let col_index = self.headers.iter().position(|h| h == col_name);
         let num_index = if let Some(c) = col_index {
             self.col_to_numeric[c]
@@ -460,7 +480,12 @@ impl Aggragate for TableStream {
         Ok(table)
     }
 
-    fn group_num_agg(&mut self, col_name: &str, group_col_name: &str, sort: bool) -> Result<TableFull> {
+    fn group_num_agg(
+        &mut self,
+        col_name: &str,
+        group_col_name: &str,
+        sort: bool,
+    ) -> Result<TableFull> {
         let col_index = match self.headers.iter().position(|h| h == col_name) {
             Some(i) => i,
             None => return Err(TableError::ColumnNotFound.into()),
@@ -526,6 +551,185 @@ impl Aggragate for TableStream {
         }
 
         Ok(table)
+    }
+}
+
+pub struct TableParallelStream {
+    headers: Vec<String>,
+    col_types: Vec<ColType>,
+    first_numerics: Vec<f64>,
+    first_strings: Vec<String>,
+    col_to_numeric: Vec<Option<usize>>,
+    col_to_string: Vec<Option<usize>>,
+    filesize: u64,
+    result_sender: Sender<AggNumBuilder>,
+    result_receiver: Receiver<AggNumBuilder>,
+    filename: PathBuf,
+    threads: u64,
+    start_pos: u64,
+    delimiter: String,
+}
+
+impl TableParallelStream {
+    pub fn from_csv(filename: PathBuf, delimiter: &str, threads: u64) -> Result<Self> {
+        let context = "Parsing CSV to Table";
+        let file = OpenOptions::new().read(true).open(&filename)?;
+        let filesize = file.metadata()?.len();
+
+        let reader = BufReader::new(file);
+        let mut start_pos = 0;
+        let mut lines = reader.lines();
+        let mut headers = String::from("#");
+        while headers.starts_with("#") {
+            headers = match lines.next() {
+                Some(l) => l.context(context)?,
+                None => return Err(TableParserError::EmptyFile.into()),
+            };
+            start_pos += headers.len() + 1;
+        }
+        let headers: Vec<String> = headers
+            .split(delimiter)
+            .map(|h| h.trim().to_string())
+            .collect();
+
+        let first_line = match lines.next() {
+            Some(l) => l.context(context)?,
+            None => return Err(TableParserError::NoData).context(context)?,
+        };
+        start_pos += first_line.len() + 1;
+        let first_entries: Vec<&str> = first_line.split(delimiter).map(|l| l.trim()).collect();
+        if first_entries.len() != headers.len() {
+            return Err(TableParserError::LineSizeConflict(1)).context(context);
+        }
+        let mut col_types = Vec::<ColType>::with_capacity(headers.len());
+        let mut first_numerics = Vec::<f64>::with_capacity(headers.len());
+        let mut first_strings = Vec::<String>::with_capacity(headers.len());
+        let mut col_to_numeric = Vec::<Option<usize>>::with_capacity(headers.len());
+        let mut col_to_string = Vec::<Option<usize>>::with_capacity(headers.len());
+        for i in 0..first_entries.len() {
+            let num = first_entries[i].parse::<f64>();
+            if let Ok(n) = num {
+                col_types.push(ColType::Numeric);
+                let index = first_numerics.len();
+                col_to_numeric.push(Some(index));
+                col_to_string.push(None);
+                first_numerics.push(n);
+            } else {
+                col_types.push(ColType::String);
+                let value = first_entries[i].to_string();
+                let index = first_strings.len();
+                col_to_numeric.push(None);
+                col_to_string.push(Some(index));
+                first_strings.push(value);
+            }
+        }
+
+        let (result_sender, result_receiver) = mpsc::channel();
+
+        Ok(Self {
+            headers,
+            col_types,
+            first_numerics,
+            first_strings,
+            col_to_numeric,
+            col_to_string,
+            result_sender,
+            result_receiver,
+            start_pos: start_pos as u64,
+            filesize,
+            threads,
+            filename,
+            delimiter: delimiter.to_string(),
+        })
+    }
+}
+
+impl Aggragate for TableParallelStream {
+    fn num_agg(&mut self, col_name: &str) -> Result<TableFull> {
+        let col_index = match self.headers.iter().position(|h| h == col_name) {
+            Some(i) => i,
+            None => return Err(TableError::ColumnNotFound.into()),
+        };
+        let num_index = self.col_to_numeric[col_index];
+        let first_val = if let Some(ni) = num_index {
+            &self.first_numerics[ni]
+        } else {
+            return Err(TableError::ColumnNotNumeric.into());
+        };
+        let chunksize = (self.filesize - self.start_pos) / self.threads;
+        let mut threads = Vec::with_capacity(self.threads as usize);
+        for i in 0..self.threads {
+            let sender = self.result_sender.clone();
+            let mut file = OpenOptions::new().read(true).open(&self.filename)?;
+            let pos = chunksize * i + self.start_pos;
+            let delimiter = self.delimiter.clone();
+            let last_thread = i == self.threads - 1;
+            let thread = std::thread::spawn(move || {
+                file.seek(SeekFrom::Start(pos - 1)).unwrap();
+                let reader = BufReader::new(file);
+                let mut lines = reader.lines();
+                // Start from the first full line
+                let skipped_line = match lines.next() {
+                    Some(l) => l.unwrap(),
+                    None => return,
+                };
+                let mut agg_builder = AggNumBuilder::new();
+                let mut bytes_read = (skipped_line.len() + 1) as u64;
+                // If we're the last thread keep going to the end of the file.
+                // Since the remainder is less than self.threads bytes, which
+                // is small, it should be fine to just have the last thread
+                // handle it.
+                while bytes_read <= chunksize || last_thread {
+                    let line = match lines.next() {
+                        Some(l) => l.unwrap(),
+                        None => break,
+                    };
+                    bytes_read += (line.len() + 1) as u64;
+                    let parts: Vec<&str> = line.split(&delimiter).collect();
+                    let val = parts[col_index].parse().unwrap();
+                    agg_builder.add_val(val);
+                }
+                sender.send(agg_builder).unwrap();
+            });
+            threads.push(thread);
+        }
+
+        let mut agg_builder = AggNumBuilder::new();
+        agg_builder.add_val(*first_val);
+        let mut received = 0;
+        // If 1 thread panics this gets stuck
+        // TODO: Create error channel to abort if an error is found
+        // in any thread
+        while received < self.threads {
+            let agg = self.result_receiver.recv().unwrap();
+            agg_builder.add(&agg);
+            received += 1;
+        }
+
+        for thread in threads {
+            thread.join().unwrap();
+        }
+
+        let mut table = TableFull::new_agg_table(None);
+
+        let agg = agg_builder.build().unwrap();
+        table.numerics[0].push(agg.min);
+        table.numerics[1].push(agg.max);
+        table.numerics[2].push(agg.mean);
+        table.numerics[3].push(agg.count as f64);
+        table.numerics[4].push(agg.stddev);
+        table.len += 1;
+
+        Ok(table)
+    }
+
+    fn group_num_agg(
+        &mut self,
+        col_name: &str,
+        group_col_name: &str,
+        sort: bool,
+    ) -> Result<TableFull> {
+        Err(anyhow!("group agg not implemented for threaded"))
     }
 }
 

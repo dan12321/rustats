@@ -2,7 +2,7 @@ use std::{io::BufRead, path::PathBuf};
 
 use anyhow::Result;
 use clap::Args;
-use stats::table::{TableFull, TableStream, Aggragate};
+use stats::table::{Aggragate, TableFull, TableParallelStream, TableStream};
 
 use crate::util::{self, DataType};
 
@@ -25,6 +25,9 @@ pub struct AggArgs {
     /// Aggregate as parsing line by line
     #[arg(short, long, default_value_t = false)]
     stream: bool,
+    /// Aggregate as parsing line by line
+    #[arg(short, long, default_value_t = 1)]
+    threads: u64,
     /// The name of the column to aggregate
     column: String,
     /// File containing data
@@ -43,7 +46,7 @@ pub fn agg_main(args: AggArgs) {
     let datatype = if let Some(d) = args.datatype {
         d
     } else {
-        if let Some(f) = args.filename {
+        if let Some(f) = &args.filename {
             match util::DataType::from_filename(&f) {
                 Ok(t) => t,
                 Err(e) => {
@@ -57,15 +60,26 @@ pub fn agg_main(args: AggArgs) {
         }
     };
 
-    let table: Result<Box<dyn Aggragate>> = if args.stream {
+    let table: Result<Box<dyn Aggragate>> = if args.threads > 1 {
         match datatype {
-            DataType::CSV => TableStream::from_csv(reader, &args.csv_delim)
-                .map(|t| Box::from(t) as Box<dyn Aggragate>),
+            DataType::CSV => TableParallelStream::from_csv(
+                args.filename.unwrap(),
+                &args.csv_delim,
+                args.threads,
+            )
+            .map(|t| Box::from(t) as Box<dyn Aggragate>),
         }
     } else {
-        match datatype {
-            DataType::CSV => TableFull::from_csv(reader, &args.csv_delim)
-                .map(|t| Box::from(t) as Box<dyn Aggragate>),
+        if args.stream {
+            match datatype {
+                DataType::CSV => TableStream::from_csv(reader, &args.csv_delim)
+                    .map(|t| Box::from(t) as Box<dyn Aggragate>),
+            }
+        } else {
+            match datatype {
+                DataType::CSV => TableFull::from_csv(reader, &args.csv_delim)
+                    .map(|t| Box::from(t) as Box<dyn Aggragate>),
+            }
         }
     };
     let mut table: Box<dyn Aggragate> = match table {
@@ -89,4 +103,3 @@ pub fn agg_main(args: AggArgs) {
     };
     println!("{}", agg.to_csv(&args.csv_delim));
 }
-

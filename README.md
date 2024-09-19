@@ -10,9 +10,33 @@ Prerequisite: Rust is setup, https://www.rust-lang.org/tools/install
 In the cli director `cargo build --release`
 ## Agg
 This finds the min, max, mean and standard deviation of a given field in a dataset.
+This can return the result grouped by another column and sort the data by
+the group name.
 
-### Testing
-Testing details can be found in [experiments/agg](experiments/agg/README.md)
+### Implementation
+#### Full Table
+By default this parses the data into a table where each column is a vector and
+then calculates the metrics. This is predictably quite slow. For 1 billion
+rows of data with no grouping or sorting, it takes around 10s on my machine and most
+of this time is parsing the table. Keeping this implementation as a comparison
+point but there's not much benefit to it.
+
+#### Stream
+Here instead of parsing the whole table we perform the calculation as we go,
+which avoids allocating large contiguous blocks for the columns and doesn't spend
+time parsing data that isn't used. This takes around 4.2s for 1 billion rows.
+
+#### Threaded
+This creates multiple threads and each one takes an equal chunk of the file
+to parse. Like with "Stream", this calculates as it goes and each thread 
+writes its result to a channel. The main thread listens for these results and
+combines them together for the final result. With 4 threads this takes 1.2s and
+with 8 threads takes 0.8s.
+
+For this method I haven't yet implemented grouping/sorting.
+
+### Perf Testing
+More details can be found in [experiments/agg](experiments/agg/README.md)
 
 ## PCA
 Principle Component Analysis is a preprocessing step to produce a hierarchical basis

@@ -7,7 +7,7 @@ a 1TB PCS 2.5" SSD.
 In the following example `../1brc/1b.csv` is 1 billion lines of weather station data
 produced from the [1 billion row challenge](https://github.com/gunnarmorling/1brc).
 This data set has two columns - measurement and station - separated by a semicolon.
-### Test
+### Test grouped
 The total time taken to process 1 billion rows is around 10s
 ```
 $ cargo build --release
@@ -40,6 +40,4 @@ Next things to figure out for this method are:
 More details like memory usage and number of swaps can be found with `/usr/bin/time -v`
 so I made the script time_tests.py to automate running this and can now output a
 csv with the stats for 100 runs with just `./experiments/time_tests.py -n 100 agg measurement ../1brc/1m.csv -c "';'" -g station > experiments/agg/1mrc_100_runs.csv`. Next I'll make
-plots of the data. This will also come in handy for comparing performance as I
-experiment with aggregating the data as it's read streaming and parallelizing the
-reading and aggregation of the data.
+plots of the data.
