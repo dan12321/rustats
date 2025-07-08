@@ -5,18 +5,12 @@ use std::{
     fs::OpenOptions,
     io::{BufRead, BufReader, Lines, Seek, SeekFrom},
     path::PathBuf,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::mpsc,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 
-use crate::{
-    agg::AggNumBuilder,
-    hist::Hist,
-    linalg::Matrix,
-    pca::pca,
-    util::sorted_insert,
-};
+use crate::{agg::AggNumBuilder, hist::Hist, linalg::Matrix, pca::pca, util::sorted_insert};
 
 #[derive(Debug, PartialEq)]
 enum ColType {
@@ -512,6 +506,7 @@ impl Aggragate for TableStream {
 
         let mut builder_map = HashMap::<String, AggNumBuilder>::new();
         let mut groups = Vec::new();
+        groups.push(first_group.to_string());
         let mut first_group_agg = AggNumBuilder::new();
         first_group_agg.add_val(*first_val);
         builder_map.insert(first_group, first_group_agg);
@@ -562,8 +557,6 @@ pub struct TableParallelStream {
     col_to_numeric: Vec<Option<usize>>,
     col_to_string: Vec<Option<usize>>,
     filesize: u64,
-    result_sender: Sender<AggNumBuilder>,
-    result_receiver: Receiver<AggNumBuilder>,
     filename: PathBuf,
     threads: u64,
     start_pos: u64,
@@ -624,8 +617,6 @@ impl TableParallelStream {
             }
         }
 
-        let (result_sender, result_receiver) = mpsc::channel();
-
         Ok(Self {
             headers,
             col_types,
@@ -633,8 +624,6 @@ impl TableParallelStream {
             first_strings,
             col_to_numeric,
             col_to_string,
-            result_sender,
-            result_receiver,
             start_pos: start_pos as u64,
             filesize,
             threads,
@@ -658,8 +647,9 @@ impl Aggragate for TableParallelStream {
         };
         let chunksize = (self.filesize - self.start_pos) / self.threads;
         let mut threads = Vec::with_capacity(self.threads as usize);
+        let (result_sender, result_receiver) = mpsc::channel::<AggNumBuilder>();
         for i in 0..self.threads {
-            let sender = self.result_sender.clone();
+            let sender = result_sender.clone();
             let mut file = OpenOptions::new().read(true).open(&self.filename)?;
             let pos = chunksize * i + self.start_pos;
             let delimiter = self.delimiter.clone();
@@ -701,7 +691,7 @@ impl Aggragate for TableParallelStream {
         // TODO: Create error channel to abort if an error is found
         // in any thread
         while received < self.threads {
-            let agg = self.result_receiver.recv().unwrap();
+            let agg = result_receiver.recv().unwrap();
             agg_builder.add(&agg);
             received += 1;
         }
@@ -729,7 +719,131 @@ impl Aggragate for TableParallelStream {
         group_col_name: &str,
         sort: bool,
     ) -> Result<TableFull> {
-        Err(anyhow!("group agg not implemented for threaded"))
+        let col_index = match self.headers.iter().position(|h| h == col_name) {
+            Some(i) => i,
+            None => return Err(TableError::ColumnNotFound.into()),
+        };
+        let num_index = self.col_to_numeric[col_index];
+        let first_val = if let Some(ni) = num_index {
+            &self.first_numerics[ni]
+        } else {
+            return Err(TableError::ColumnNotNumeric.into());
+        };
+
+        let group_index = match self.headers.iter().position(|h| h == group_col_name) {
+            Some(i) => i,
+            None => return Err(TableError::GroupColumnNotFound.into()),
+        };
+        let group_string_index = match self.col_types[group_index] {
+            ColType::Numeric => return Err(TableError::GroupOnNumericNotImplemented.into()),
+            ColType::String => self.col_to_string[group_index],
+        };
+        let first_group = match group_string_index {
+            Some(i) => self.first_strings[i].clone(),
+            None => return Err(TableError::GroupColumnNotString.into()),
+        };
+
+        let chunksize = (self.filesize - self.start_pos) / self.threads;
+        let mut threads = Vec::with_capacity(self.threads as usize);
+        let (result_sender, result_receiver) = mpsc::channel::<HashMap<String, AggNumBuilder>>();
+        for i in 0..self.threads {
+            let sender = result_sender.clone();
+            let mut file = OpenOptions::new().read(true).open(&self.filename)?;
+            let pos = chunksize * i + self.start_pos;
+            let delimiter = self.delimiter.clone();
+            let last_thread = i == self.threads - 1;
+            let thread = std::thread::spawn(move || {
+                file.seek(SeekFrom::Start(pos - 1)).unwrap();
+                let reader = BufReader::new(file);
+                let mut lines = reader.lines();
+                // Start from the first full line
+                let skipped_line = match lines.next() {
+                    Some(l) => l.unwrap(),
+                    None => return,
+                };
+                let mut group_agg_builder: HashMap<String, AggNumBuilder> = HashMap::new();
+                let mut bytes_read = (skipped_line.len() + 1) as u64;
+                // If we're the last thread keep going to the end of the file.
+                // Since the remainder is less than self.threads bytes, which
+                // is small, it should be fine to just have the last thread
+                // handle it.
+                while bytes_read <= chunksize || last_thread {
+                    let line = match lines.next() {
+                        Some(l) => l.unwrap(),
+                        None => break,
+                    };
+                    bytes_read += (line.len() + 1) as u64;
+                    let parts: Vec<&str> = line.split(&delimiter).collect();
+                    let val = parts[col_index].parse().unwrap();
+                    let group = parts[group_index];
+                    if let Some(agg_builder) = group_agg_builder.get_mut(group) {
+                        agg_builder.add_val(val);
+                    } else {
+                        let mut agg_builder = AggNumBuilder::new();
+                        agg_builder.add_val(val);
+                        group_agg_builder.insert(group.to_string(), agg_builder);
+                    }
+                }
+                sender.send(group_agg_builder).unwrap();
+            });
+            threads.push(thread);
+        }
+        let mut group_agg_builder = HashMap::new();
+        let mut agg_builder = AggNumBuilder::new();
+        agg_builder.add_val(*first_val);
+        group_agg_builder.insert(first_group, agg_builder);
+        let mut received = 0;
+        // If 1 thread panics this gets stuck
+        // TODO: Create error channel to abort if an error is found
+        // in any thread
+        while received < self.threads {
+            let groups_res = result_receiver.recv().unwrap();
+            for (group_res, builder_res) in groups_res {
+                if let Some(builder) = group_agg_builder.get_mut(&group_res) {
+                    builder.add(&builder_res);
+                } else {
+                    group_agg_builder.insert(group_res, builder_res);
+                }
+            }
+            received += 1;
+        }
+
+        for thread in threads {
+            thread.join().unwrap();
+        }
+
+        let mut table = TableFull::new_agg_table(Some(group_col_name.into()));
+
+        let groups: Vec<&String> = if sort {
+            let groups = group_agg_builder.keys();
+            let mut res = Vec::with_capacity(groups.len());
+            for g in groups {
+                res.push(g);
+            }
+            res.sort();
+            res
+        } else {
+            let groups = group_agg_builder.keys();
+            let mut res = Vec::with_capacity(groups.len());
+            for g in groups {
+                res.push(g);
+            }
+            res
+        };
+
+        for group in groups {
+            let builder = group_agg_builder.get(group).unwrap();
+            let agg = builder.build().unwrap();
+            table.strings[0].push(group.to_string());
+            table.numerics[0].push(agg.min);
+            table.numerics[1].push(agg.max);
+            table.numerics[2].push(agg.mean);
+            table.numerics[3].push(agg.count as f64);
+            table.numerics[4].push(agg.stddev);
+            table.len += 1;
+        }
+
+        Ok(table)
     }
 }
 
@@ -767,3 +881,70 @@ impl Display for TableParserError {
 }
 
 impl Error for TableParserError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_full_table() {
+        let test_file = OpenOptions::new()
+            .read(true)
+            .open("../datasets/weather_stations.csv")
+            .unwrap();
+        let reader = Box::new(BufReader::new(test_file));
+        let mut table = TableFull::from_csv(reader, ";").unwrap();
+        let result = table.group_num_agg("measurement", "location", true).unwrap();
+
+        let expected_file = OpenOptions::new()
+            .read(true)
+            .open("../datasets/weather_stations_agg.csv")
+            .unwrap();
+        let expected_reader = Box::new(BufReader::new(expected_file));
+        let expected = TableFull::from_csv(expected_reader, ";").unwrap();
+
+        assert_eq!(result.headers, expected.headers);
+        assert_eq!(result.strings, expected.strings);
+        assert_eq!(result.numerics, expected.numerics);
+    }
+
+    #[test]
+    fn test_streamed_table() {
+        let test_file = OpenOptions::new()
+            .read(true)
+            .open("../datasets/weather_stations.csv")
+            .unwrap();
+        let reader = Box::new(BufReader::new(test_file));
+        let mut table = TableStream::from_csv(reader, ";").unwrap();
+        let result = table.group_num_agg("measurement", "location", true).unwrap();
+
+        let expected_file = OpenOptions::new()
+            .read(true)
+            .open("../datasets/weather_stations_agg.csv")
+            .unwrap();
+        let expected_reader = Box::new(BufReader::new(expected_file));
+        let expected = TableFull::from_csv(expected_reader, ";").unwrap();
+
+        assert_eq!(result.headers, expected.headers);
+        assert_eq!(result.strings, expected.strings);
+        assert_eq!(result.numerics, expected.numerics);
+    }
+
+    #[test]
+    fn test_threaded_stream_table() {
+        let test_file = "../datasets/weather_stations.csv";
+        let mut table = TableParallelStream::from_csv(test_file.into(), ";", 3).unwrap();
+        let result = table.group_num_agg("measurement", "location", true).unwrap();
+
+        let expected_file = OpenOptions::new()
+            .read(true)
+            .open("../datasets/weather_stations_agg.csv")
+            .unwrap();
+        let expected_reader = Box::new(BufReader::new(expected_file));
+        let expected = TableFull::from_csv(expected_reader, ";").unwrap();
+
+        assert_eq!(result.headers, expected.headers);
+        assert_eq!(result.strings, expected.strings);
+        assert_eq!(result.numerics, expected.numerics);
+    }
+}
