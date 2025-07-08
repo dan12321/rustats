@@ -22,7 +22,7 @@ struct Cli {
 enum Tool {
     /// Principal component analysis
     #[command(version, about, long_about = None)]
-    PCA(PcaArgs),
+    Pca(PcaArgs),
 
     /// Aggregate data
     #[command(version, about, long_about = None)]
@@ -36,7 +36,7 @@ enum Tool {
 fn main() {
     let cli = Cli::parse();
     match cli.tool {
-        Tool::PCA(args) => pca::pca_main(args),
+        Tool::Pca(args) => pca::pca_main(args),
         Tool::Agg(args) => agg::agg_main(args),
         Tool::Hist(args) => hist::hist_main(args),
     }

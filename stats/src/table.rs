@@ -70,8 +70,8 @@ impl TableFull {
         let mut strings = Vec::<Vec<String>>::with_capacity(headers.len());
         let mut col_to_numeric = Vec::<Option<usize>>::with_capacity(headers.len());
         let mut col_to_string = Vec::<Option<usize>>::with_capacity(headers.len());
-        for i in 0..first_entries.len() {
-            let num = first_entries[i].parse::<f64>();
+        for entry in first_entries {
+            let num = entry.parse::<f64>();
             if let Ok(n) = num {
                 col_types.push(ColType::Numeric);
                 let column = vec![n];
@@ -81,7 +81,7 @@ impl TableFull {
                 numerics.push(column);
             } else {
                 col_types.push(ColType::String);
-                let value = first_entries[i].to_string();
+                let value = entry.to_string();
                 let column = vec![value];
                 let index = strings.len();
                 col_to_numeric.push(None);
@@ -202,7 +202,7 @@ impl TableFull {
             None => return Err(TableError::ColumnNotNumeric.into()),
         };
 
-        let hist = Hist::hist(col, width, min, max);
+        let hist = Hist::new(col, width, min, max);
         Ok(Self {
             headers: vec![column.to_string(), "count".to_string()],
             col_types: vec![ColType::Numeric, ColType::Numeric],
@@ -407,8 +407,8 @@ impl TableStream {
         let mut first_strings = Vec::<String>::with_capacity(headers.len());
         let mut col_to_numeric = Vec::<Option<usize>>::with_capacity(headers.len());
         let mut col_to_string = Vec::<Option<usize>>::with_capacity(headers.len());
-        for i in 0..first_entries.len() {
-            let num = first_entries[i].parse::<f64>();
+        for entry in first_entries {
+            let num = entry.parse::<f64>();
             if let Ok(n) = num {
                 col_types.push(ColType::Numeric);
                 let index = first_numerics.len();
@@ -417,7 +417,7 @@ impl TableStream {
                 first_numerics.push(n);
             } else {
                 col_types.push(ColType::String);
-                let value = first_entries[i].to_string();
+                let value = entry.to_string();
                 let index = first_strings.len();
                 col_to_numeric.push(None);
                 col_to_string.push(Some(index));
@@ -599,8 +599,8 @@ impl TableParallelStream {
         let mut first_strings = Vec::<String>::with_capacity(headers.len());
         let mut col_to_numeric = Vec::<Option<usize>>::with_capacity(headers.len());
         let mut col_to_string = Vec::<Option<usize>>::with_capacity(headers.len());
-        for i in 0..first_entries.len() {
-            let num = first_entries[i].parse::<f64>();
+        for entry in first_entries {
+            let num = entry.parse::<f64>();
             if let Ok(n) = num {
                 col_types.push(ColType::Numeric);
                 let index = first_numerics.len();
@@ -609,7 +609,7 @@ impl TableParallelStream {
                 first_numerics.push(n);
             } else {
                 col_types.push(ColType::String);
-                let value = first_entries[i].to_string();
+                let value = entry.to_string();
                 let index = first_strings.len();
                 col_to_numeric.push(None);
                 col_to_string.push(Some(index));

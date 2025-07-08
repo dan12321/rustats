@@ -88,13 +88,17 @@ impl Matrix {
         Ok(elements)
     }
 
-    pub fn set_col(&mut self, i: usize, column: &Vec<f64>) -> Result<(), MatrixError> {
+    pub fn set_col(&mut self, i: usize, column: &[f64]) -> Result<(), MatrixError> {
         if i >= self.width {
             return Err(MatrixError::OutOfBounds);
         }
 
-        for j in 0..self.height {
-            self.set_unchecked(j, i, column[j]);
+        if column.len() != self.height() {
+            return Err(MatrixError::SizeMismatch);
+        }
+
+        for (j, v) in column.iter().enumerate() {
+            self.set_unchecked(j, i, *v);
         }
 
         Ok(())
@@ -148,8 +152,8 @@ impl Matrix {
     pub fn mean_row(&self) -> Vec<f64> {
         let mut elements = vec![0.0; self.width];
         for i in 0..self.height {
-            for j in 0..self.width {
-                elements[j] += self.get_unchecked(i, j) / self.height as f64;
+            for (j, v) in elements.iter_mut().enumerate() {
+                *v += self.get_unchecked(i, j) / self.height as f64;
             }
         }
         elements
@@ -252,9 +256,9 @@ impl SquareMatrix {
     ) -> Result<SquareMatrix> {
         let eigen_values = self.eigen_values(val_threshold, val_max_iter);
         let mut result = Matrix::new(vec![0.0; self.n * self.n], self.n, self.n).unwrap();
-        for i in 0..eigen_values.len() {
+        for (i, v) in eigen_values.iter().enumerate() {
             // shifted = A - sI
-            let shift = Matrix::identity(self.n, self.n).scalar_mul(eigen_values[i]);
+            let shift = Matrix::identity(self.n, self.n).scalar_mul(*v);
             let shifted: SquareMatrix = self.matrix.sub(shift).unwrap().try_into().unwrap();
 
             let lu = shifted.lu_decomp();
@@ -267,8 +271,8 @@ impl SquareMatrix {
                 for a in &basis {
                     max = if a.abs() > max.abs() { *a } else { max };
                 }
-                for i in 0..basis.len() {
-                    basis[i] /= max;
+                for v in basis.iter_mut() {
+                    *v /= max;
                 }
             }
             result.set_col(i, &basis).unwrap();
@@ -313,17 +317,17 @@ impl TryFrom<Matrix> for SquareMatrix {
     }
 }
 
-impl Into<Matrix> for SquareMatrix {
-    fn into(self) -> Matrix {
-        self.matrix
+impl From<SquareMatrix> for Matrix {
+    fn from(value: SquareMatrix) -> Self {
+        value.matrix
     }
 }
 
-pub fn dot(u: &Vec<f64>, v: &Vec<f64>) -> f64 {
+pub fn dot(u: &[f64], v: &[f64]) -> f64 {
     u.iter().zip(v.iter()).fold(0.0, |acc, (a, b)| acc + a * b)
 }
 
-pub fn matrix_rows(u: &Vec<f64>, height: usize) -> Matrix {
+pub fn matrix_rows(u: &[f64], height: usize) -> Matrix {
     Matrix {
         elements: u.repeat(height),
         height,
@@ -331,19 +335,19 @@ pub fn matrix_rows(u: &Vec<f64>, height: usize) -> Matrix {
     }
 }
 
-pub fn norm(u: &Vec<f64>) -> f64 {
+pub fn norm(u: &[f64]) -> f64 {
     u.iter().fold(0.0, |acc, a| acc + a * a).sqrt()
 }
 
-pub fn add(u: &Vec<f64>, v: &Vec<f64>) -> Vec<f64> {
+pub fn add(u: &[f64], v: &[f64]) -> Vec<f64> {
     u.iter().zip(v.iter()).map(|(a, b)| a + b).collect()
 }
 
-pub fn sub(u: &Vec<f64>, v: &Vec<f64>) -> Vec<f64> {
+pub fn sub(u: &[f64], v: &[f64]) -> Vec<f64> {
     u.iter().zip(v.iter()).map(|(a, b)| a - b).collect()
 }
 
-fn scalar_mul(a: f64, u: &Vec<f64>) -> Vec<f64> {
+fn scalar_mul(a: f64, u: &[f64]) -> Vec<f64> {
     u.iter().map(|b| a * b).collect()
 }
 
@@ -366,7 +370,7 @@ impl LU {
     /// Given an equation LUu = v where v is known,
     /// solve for u.
     /// A=LU must be invertible
-    pub fn solve_for_vec(&self, v: &Vec<f64>) -> Result<Vec<f64>> {
+    pub fn solve_for_vec(&self, v: &[f64]) -> Result<Vec<f64>> {
         if v.len() != self.n {
             return Err(MatrixError::SizeMismatch.into());
         }
@@ -415,7 +419,7 @@ impl Error for MatrixError {}
 mod tests {
     use super::*;
 
-    fn round(u: &Vec<f64>, places: i32) -> Vec<f64> {
+    fn round(u: &[f64], places: i32) -> Vec<f64> {
         let shift = 10.0_f64.powi(places);
         let elements = u.iter().map(|a| (a * shift).round() / shift).collect();
         elements

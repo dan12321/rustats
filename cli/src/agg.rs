@@ -38,52 +38,48 @@ pub fn agg_main(args: AggArgs) {
     let reader: Box<dyn BufRead> = match util::get_buff_reader(&args.filename) {
         Ok(br) => br,
         Err(e) => {
-            eprintln!("Could not read file due to error: {}", e.to_string());
+            eprintln!("Could not read file due to error: {}", e);
             return;
         }
     };
 
     let datatype = if let Some(d) = args.datatype {
         d
-    } else {
-        if let Some(f) = &args.filename {
-            match util::DataType::from_filename(&f) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return;
-                }
+    } else if let Some(f) = &args.filename {
+        match util::DataType::from_filename(f) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("{}", e);
+                return;
             }
-        } else {
-            eprintln!("No file provided. --datatype must be specified");
-            return;
         }
+    } else {
+        eprintln!("No file provided. --datatype must be specified");
+        return;
     };
 
     let table: Result<Box<dyn Aggragate>> = if args.threads > 1 {
         match datatype {
-            DataType::CSV => TableParallelStream::from_csv(
+            DataType::Csv => TableParallelStream::from_csv(
                 args.filename.unwrap(),
                 &args.csv_delim,
                 args.threads,
             )
             .map(|t| Box::from(t) as Box<dyn Aggragate>),
         }
+    } else if args.stream {
+        match datatype {
+            DataType::Csv => TableStream::from_csv(reader, &args.csv_delim)
+                .map(|t| Box::from(t) as Box<dyn Aggragate>),
+        }
     } else {
-        if args.stream {
-            match datatype {
-                DataType::CSV => TableStream::from_csv(reader, &args.csv_delim)
-                    .map(|t| Box::from(t) as Box<dyn Aggragate>),
-            }
-        } else {
-            match datatype {
-                DataType::CSV => TableFull::from_csv(reader, &args.csv_delim)
-                    .map(|t| Box::from(t) as Box<dyn Aggragate>),
-            }
+        match datatype {
+            DataType::Csv => TableFull::from_csv(reader, &args.csv_delim)
+                .map(|t| Box::from(t) as Box<dyn Aggragate>),
         }
     };
     let mut table: Box<dyn Aggragate> = match table {
-        Ok(t) => Box::from(t),
+        Ok(t) => t,
         Err(e) => {
             eprintln!("Error parsing data: {}", e);
             return;

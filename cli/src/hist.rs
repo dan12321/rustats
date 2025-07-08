@@ -35,30 +35,28 @@ pub fn hist_main(args: HistArgs) {
     let reader: Box<dyn BufRead> = match util::get_buff_reader(&args.filename) {
         Ok(br) => br,
         Err(e) => {
-            eprintln!("Could not read file due to error: {}", e.to_string());
+            eprintln!("Could not read file due to error: {}", e);
             return;
         }
     };
 
     let datatype = if let Some(d) = args.datatype {
         d
-    } else {
-        if let Some(f) = args.filename {
-            match util::DataType::from_filename(&f) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return;
-                }
+    } else if let Some(f) = args.filename {
+        match util::DataType::from_filename(&f) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("{}", e);
+                return;
             }
-        } else {
-            eprintln!("No file provided. --datatype must be specified");
-            return;
         }
+    } else {
+        eprintln!("No file provided. --datatype must be specified");
+        return;
     };
 
     let table = match datatype {
-        DataType::CSV => TableFull::from_csv(reader, &args.csv_delim),
+        DataType::Csv => TableFull::from_csv(reader, &args.csv_delim),
     };
     let table = match table {
         Ok(t) => t,

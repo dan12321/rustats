@@ -3,7 +3,7 @@ use std::{
     fmt::Display,
     fs::OpenOptions,
     io::{self, BufRead, BufReader},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use anyhow::Result;
@@ -24,17 +24,15 @@ pub fn get_buff_reader(filename: &Option<PathBuf>) -> Result<Box<dyn BufRead>> {
 #[derive(Debug, ValueEnum, Clone, Copy)]
 pub enum DataType {
     /// Comma separated values
-    CSV,
+    Csv,
 }
 
 impl DataType {
-    pub fn from_filename(filename: &PathBuf) -> Result<Self, DataTypeError> {
+    pub fn from_filename(filename: &Path) -> Result<Self, DataTypeError> {
         let dt = filename
             .extension()
-            .map(|e| e.to_str())
-            .flatten()
-            .map(|e| DataType::from_str(e, true).ok())
-            .flatten();
+            .and_then(|e| e.to_str())
+            .and_then(|e| DataType::from_str(e, true).ok());
 
         match dt {
             Some(dt) => Ok(dt),

@@ -6,8 +6,8 @@ pub struct Hist {
 }
 
 impl Hist {
-    pub fn hist(column: &Vec<f64>, width: f64, min: Option<f64>, max: Option<f64>) -> Self {
-        if column.len() == 0 {
+    pub fn new(column: &Vec<f64>, width: f64, min: Option<f64>, max: Option<f64>) -> Self {
+        if column.is_empty() {
             return Hist {
                 buckets: Vec::new(),
                 counts: Vec::new(),
@@ -58,7 +58,7 @@ mod tests {
         let min = Some(-2.0);
         let max = Some(2.0);
 
-        let hist = Hist::hist(&column, width, min, max);
+        let hist = Hist::new(&column, width, min, max);
 
         let expected = Hist {
             buckets: vec![-2.0, -1.0, 0.0, 1.0, 2.0],
@@ -76,7 +76,7 @@ mod tests {
         let min = None;
         let max = None;
 
-        let hist = Hist::hist(&column, width, min, max);
+        let hist = Hist::new(&column, width, min, max);
 
         let expected = Hist {
             buckets: vec![-1.0, 1.0, 3.0, 5.0],
