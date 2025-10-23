@@ -63,5 +63,8 @@ pub fn pca_main(args: PcaArgs) {
             return;
         }
     }
-    println!("{}", table.to_csv(&args.csv_delim));
+    println!(
+        "{}",
+        table.to_csv(&args.csv_delim, args.round_places.map_or(2, |p| p as usize))
+    );
 }

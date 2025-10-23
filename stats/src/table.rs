@@ -129,7 +129,7 @@ impl TableFull {
         })
     }
 
-    pub fn to_csv(&self, delimiter: &str) -> String {
+    pub fn to_csv(&self, delimiter: &str, precision: usize) -> String {
         let mut lines = Vec::with_capacity(self.len + 1);
         lines.push(self.headers.join(delimiter));
         for i in 0..self.len {
@@ -139,7 +139,7 @@ impl TableFull {
                     // Assume table is correctly formatted
                     ColType::Numeric => {
                         let index = self.col_to_numeric[j].unwrap();
-                        format!("{:.0}", self.numerics[index][i])
+                        format!("{0:.1$}", self.numerics[index][i], precision)
                     }
                     ColType::String => {
                         let index = self.col_to_string[j].unwrap();
@@ -886,6 +886,7 @@ pub fn agg_csv(
     delimiter: u8,
     group: Option<&str>,
     sort: bool,
+    precision: usize,
 ) -> Result<Vec<u8>> {
     let lf = LazyCsvReader::new(path)
         .with_has_header(true)
@@ -913,7 +914,7 @@ pub fn agg_csv(
     let mut writer = CsvWriter::new(cursor)
         .include_header(true)
         .with_separator(delimiter)
-        .with_float_precision(Some(0))
+        .with_float_precision(Some(precision))
         .with_null_value(String::from("0"));
     writer.finish(&mut aggregated).unwrap();
     Ok(result)
@@ -945,7 +946,7 @@ mod tests {
         expected_file.read_to_end(&mut expected_result).unwrap();
 
         assert_eq!(
-            result.to_csv(";"),
+            result.to_csv(";", 0),
             String::from_utf8(expected_result).unwrap()
         );
     }
@@ -970,7 +971,7 @@ mod tests {
         expected_file.read_to_end(&mut expected_result).unwrap();
 
         assert_eq!(
-            result.to_csv(";"),
+            result.to_csv(";", 0),
             String::from_utf8(expected_result).unwrap()
         );
     }
@@ -991,7 +992,7 @@ mod tests {
         expected_file.read_to_end(&mut expected_result).unwrap();
 
         assert_eq!(
-            result.to_csv(";"),
+            result.to_csv(";", 0),
             String::from_utf8(expected_result).unwrap()
         );
     }
@@ -999,7 +1000,14 @@ mod tests {
     #[test]
     fn test_polars_agg() {
         let test_file = Path::new("../datasets/weather_stations.csv");
-        let result = agg_csv(&test_file, "measurement", b';', Some("location"), true).unwrap();
+        let result = agg_csv(
+            &test_file,
+            "measurement",
+            b';',
+            Some("location"),
+            true,
+            0,
+        ).unwrap();
 
         let mut expected_file = OpenOptions::new()
             .read(true)

@@ -15,6 +15,9 @@ pub struct HistArgs {
     /// CSV delimiter
     #[arg(long, default_value_t = String::from(","))]
     csv_delim: String,
+    /// Number of places to output
+    #[arg(long, default_value_t = 2)]
+    precision: usize,
     /// Min value
     #[arg(long)]
     min: Option<f64>,
@@ -72,5 +75,5 @@ pub fn hist_main(args: HistArgs) {
             return;
         }
     };
-    println!("{}", result.to_csv(&args.csv_delim));
+    println!("{}", result.to_csv(&args.csv_delim, args.precision));
 }

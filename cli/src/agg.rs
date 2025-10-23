@@ -25,9 +25,12 @@ pub struct AggArgs {
     /// Aggregate as parsing line by line
     #[arg(short, long, default_value_t = false)]
     stream: bool,
-    /// Aggregate as parsing line by line
+    /// Number of threads to use
     #[arg(short, long, default_value_t = 1)]
     threads: u64,
+    /// Number of places to output
+    #[arg(short, long, default_value_t = 1)]
+    precision: usize,
     /// Use polars backend
     #[arg(short, long, default_value_t = false)]
     polars: bool,
@@ -46,6 +49,7 @@ pub fn agg_main(args: AggArgs) {
             args.csv_delim as u8,
             g,
             args.sort,
+            args.precision,
         ).unwrap();
 
         println!("{}", String::from_utf8(result).unwrap());
@@ -113,5 +117,5 @@ pub fn agg_main(args: AggArgs) {
             return;
         }
     };
-    println!("{}", agg.to_csv(&args.csv_delim.to_string()));
+    println!("{}", agg.to_csv(&args.csv_delim.to_string(), args.precision));
 }
