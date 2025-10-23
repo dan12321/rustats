@@ -20,14 +20,17 @@ pub struct AggArgs {
     #[arg(long)]
     sort: bool,
     /// CSV delimiter
-    #[arg(short, long, default_value_t = String::from(","))]
-    csv_delim: String,
+    #[arg(short, long, default_value_t = ',')]
+    csv_delim: char,
     /// Aggregate as parsing line by line
     #[arg(short, long, default_value_t = false)]
     stream: bool,
     /// Aggregate as parsing line by line
     #[arg(short, long, default_value_t = 1)]
     threads: u64,
+    /// Use polars backend
+    #[arg(short, long, default_value_t = false)]
+    polars: bool,
     /// The name of the column to aggregate
     column: String,
     /// File containing data
@@ -35,10 +38,23 @@ pub struct AggArgs {
 }
 
 pub fn agg_main(args: AggArgs) {
-    let reader: Box<dyn BufRead> = match util::get_buff_reader(&args.filename) {
+    if args.polars {
+        let g = args.group_by.as_deref();
+        let result = stats::table::agg_csv(
+            args.filename.unwrap().as_path(),
+            &args.column,
+            args.csv_delim as u8,
+            g,
+            args.sort,
+        ).unwrap();
+
+        println!("{}", String::from_utf8(result).unwrap());
+        return;
+    }
+    let reader: Box<dyn BufRead> = match util::get_buff_reader(args.filename.as_ref()) {
         Ok(br) => br,
         Err(e) => {
-            eprintln!("Could not read file due to error: {}", e);
+            eprintln!("Could not read file due to error: {e}");
             return;
         }
     };
@@ -49,7 +65,7 @@ pub fn agg_main(args: AggArgs) {
         match util::DataType::from_filename(f) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("{}", e);
+                eprintln!("{e}");
                 return;
             }
         }
@@ -62,26 +78,26 @@ pub fn agg_main(args: AggArgs) {
         match datatype {
             DataType::Csv => TableParallelStream::from_csv(
                 args.filename.unwrap(),
-                &args.csv_delim,
+                &args.csv_delim.to_string(),
                 args.threads,
             )
             .map(|t| Box::from(t) as Box<dyn Aggragate>),
         }
     } else if args.stream {
         match datatype {
-            DataType::Csv => TableStream::from_csv(reader, &args.csv_delim)
+            DataType::Csv => TableStream::from_csv(reader, &args.csv_delim.to_string())
                 .map(|t| Box::from(t) as Box<dyn Aggragate>),
         }
     } else {
         match datatype {
-            DataType::Csv => TableFull::from_csv(reader, &args.csv_delim)
+            DataType::Csv => TableFull::from_csv(reader, &args.csv_delim.to_string())
                 .map(|t| Box::from(t) as Box<dyn Aggragate>),
         }
     };
     let mut table: Box<dyn Aggragate> = match table {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("Error parsing data: {}", e);
+            eprintln!("Error parsing data: {e}");
             return;
         }
     };
@@ -93,9 +109,9 @@ pub fn agg_main(args: AggArgs) {
     let agg = match agg {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("Error calculating aggregate data: {}", e);
+            eprintln!("Error calculating aggregate data: {e}");
             return;
         }
     };
-    println!("{}", agg.to_csv(&args.csv_delim));
+    println!("{}", agg.to_csv(&args.csv_delim.to_string()));
 }

@@ -32,10 +32,10 @@ pub struct HistArgs {
 }
 
 pub fn hist_main(args: HistArgs) {
-    let reader: Box<dyn BufRead> = match util::get_buff_reader(&args.filename) {
+    let reader: Box<dyn BufRead> = match util::get_buff_reader(args.filename.as_ref()) {
         Ok(br) => br,
         Err(e) => {
-            eprintln!("Could not read file due to error: {}", e);
+            eprintln!("Could not read file due to error: {e}");
             return;
         }
     };
@@ -46,7 +46,7 @@ pub fn hist_main(args: HistArgs) {
         match util::DataType::from_filename(&f) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("{}", e);
+                eprintln!("{e}");
                 return;
             }
         }
@@ -61,14 +61,14 @@ pub fn hist_main(args: HistArgs) {
     let table = match table {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("Error parsing data: {}", e);
+            eprintln!("Error parsing data: {e}");
             return;
         }
     };
     let result = match table.hist(&args.column, args.width, args.min, args.max) {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("Error calculating pca: {}", e);
+            eprintln!("Error calculating pca: {e}");
             return;
         }
     };

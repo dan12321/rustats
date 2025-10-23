@@ -9,7 +9,7 @@ use std::{
 use anyhow::Result;
 use clap::ValueEnum;
 
-pub fn get_buff_reader(filename: &Option<PathBuf>) -> Result<Box<dyn BufRead>> {
+pub fn get_buff_reader(filename: Option<&PathBuf>) -> Result<Box<dyn BufRead>> {
     let reader: Box<dyn BufRead> = if let Some(filename) = filename {
         let file = OpenOptions::new().read(true).open(filename)?;
 
@@ -52,7 +52,7 @@ impl Display for DataTypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DataTypeError::CouldNotGetFromFileExt(file) => {
-                write!(f, "File extension couldn't be identified on {}", file)
+                write!(f, "File extension couldn't be identified on {file}")
             }
         }
     }

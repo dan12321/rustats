@@ -4,11 +4,12 @@ use std::{
     fmt::Display,
     fs::OpenOptions,
     io::{BufRead, BufReader, Lines, Seek, SeekFrom},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::mpsc,
 };
 
 use anyhow::{Context, Result};
+use polars::prelude::*;
 
 use crate::{agg::AggNumBuilder, hist::Hist, linalg::Matrix, pca::pca, util::sorted_insert};
 
@@ -103,10 +104,7 @@ impl TableFull {
                     ColType::Numeric => {
                         let value: f64 = entries[i]
                             .parse()
-                            .context(format!(
-                                "Failed to parse numeric on line {}, col {}",
-                                line_num, i,
-                            ))
+                            .context(format!("Parsing numeric line {line_num}, col {i}"))
                             .context(context)?;
                         let num_col: usize = col_to_numeric[i].unwrap();
                         numerics[num_col].push(value);
@@ -141,7 +139,7 @@ impl TableFull {
                     // Assume table is correctly formatted
                     ColType::Numeric => {
                         let index = self.col_to_numeric[j].unwrap();
-                        self.numerics[index][i].to_string()
+                        format!("{:.0}", self.numerics[index][i])
                     }
                     ColType::String => {
                         let index = self.col_to_string[j].unwrap();
@@ -152,7 +150,7 @@ impl TableFull {
             }
             lines.push(line.join(delimiter));
         }
-        lines.join("\n")
+        lines.join("\n") + "\n"
     }
 
     pub fn pca(&mut self, round_places: Option<i32>) -> Result<()> {
@@ -162,7 +160,7 @@ impl TableFull {
         let mut pca_i = 1;
         for i in 0..self.headers.len() {
             if self.col_types[i] == ColType::Numeric {
-                self.headers[i] = format!("pca{}", pca_i);
+                self.headers[i] = format!("pca{pca_i}");
                 pca_i += 1;
             }
         }
@@ -858,7 +856,7 @@ enum TableError {
 
 impl Display for TableError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -874,77 +872,145 @@ enum TableParserError {
 impl Display for TableParserError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TableParserError::LineSizeConflict(l) => write!(f, "{:?} on line {}", self, l),
-            _ => write!(f, "{:?}", self),
+            TableParserError::LineSizeConflict(l) => write!(f, "{self:?} on line {l}"),
+            _ => write!(f, "{self:?}"),
         }
     }
 }
 
 impl Error for TableParserError {}
 
+pub fn agg_csv(
+    path: &Path,
+    column: &str,
+    delimiter: u8,
+    group: Option<&str>,
+    sort: bool,
+) -> Result<Vec<u8>> {
+    let lf = LazyCsvReader::new(path)
+        .with_has_header(true)
+        .with_separator(delimiter)
+        .finish()
+        .unwrap();
+    let aggs = [
+        col(column).min().alias("min"),
+        col(column).max().alias("max"),
+        col(column).mean().alias("mean"),
+        col(column).count().alias("count"),
+        col(column).std(1).alias("stddev"),
+    ];
+    let mut aggregated = if let Some(g) = group {
+        let mut df = lf.group_by([col(g)]).agg(aggs).collect().unwrap();
+        if sort {
+            df = df.sort([g], Default::default()).unwrap();
+        }
+        df
+    } else {
+        lf.select(aggs).collect().unwrap()
+    };
+    let mut result: Vec<u8> = Vec::new();
+    let cursor = std::io::Cursor::new(&mut result);
+    let mut writer = CsvWriter::new(cursor)
+        .include_header(true)
+        .with_separator(delimiter)
+        .with_float_precision(Some(0))
+        .with_null_value(String::from("0"));
+    writer.finish(&mut aggregated).unwrap();
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
+    use std::io::Read;
+
     use super::*;
 
     #[test]
-    fn test_full_table() {
+    fn test_full_table_agg() {
         let test_file = OpenOptions::new()
             .read(true)
             .open("../datasets/weather_stations.csv")
             .unwrap();
         let reader = Box::new(BufReader::new(test_file));
         let mut table = TableFull::from_csv(reader, ";").unwrap();
-        let result = table.group_num_agg("measurement", "location", true).unwrap();
+        let result = table
+            .group_num_agg("measurement", "location", true)
+            .unwrap();
 
-        let expected_file = OpenOptions::new()
+        let mut expected_file = OpenOptions::new()
             .read(true)
             .open("../datasets/weather_stations_agg.csv")
             .unwrap();
-        let expected_reader = Box::new(BufReader::new(expected_file));
-        let expected = TableFull::from_csv(expected_reader, ";").unwrap();
+        let mut expected_result: Vec<u8> = Vec::new();
+        expected_file.read_to_end(&mut expected_result).unwrap();
 
-        assert_eq!(result.headers, expected.headers);
-        assert_eq!(result.strings, expected.strings);
-        assert_eq!(result.numerics, expected.numerics);
+        assert_eq!(
+            result.to_csv(";"),
+            String::from_utf8(expected_result).unwrap()
+        );
     }
 
     #[test]
-    fn test_streamed_table() {
+    fn test_streamed_table_agg() {
         let test_file = OpenOptions::new()
             .read(true)
             .open("../datasets/weather_stations.csv")
             .unwrap();
         let reader = Box::new(BufReader::new(test_file));
         let mut table = TableStream::from_csv(reader, ";").unwrap();
-        let result = table.group_num_agg("measurement", "location", true).unwrap();
+        let result = table
+            .group_num_agg("measurement", "location", true)
+            .unwrap();
 
-        let expected_file = OpenOptions::new()
+        let mut expected_file = OpenOptions::new()
             .read(true)
             .open("../datasets/weather_stations_agg.csv")
             .unwrap();
-        let expected_reader = Box::new(BufReader::new(expected_file));
-        let expected = TableFull::from_csv(expected_reader, ";").unwrap();
+        let mut expected_result: Vec<u8> = Vec::new();
+        expected_file.read_to_end(&mut expected_result).unwrap();
 
-        assert_eq!(result.headers, expected.headers);
-        assert_eq!(result.strings, expected.strings);
-        assert_eq!(result.numerics, expected.numerics);
+        assert_eq!(
+            result.to_csv(";"),
+            String::from_utf8(expected_result).unwrap()
+        );
     }
 
     #[test]
-    fn test_threaded_stream_table() {
+    fn test_threaded_stream_table_agg() {
         let test_file = "../datasets/weather_stations.csv";
         let mut table = TableParallelStream::from_csv(test_file.into(), ";", 3).unwrap();
-        let result = table.group_num_agg("measurement", "location", true).unwrap();
+        let result = table
+            .group_num_agg("measurement", "location", true)
+            .unwrap();
 
-        let expected_file = OpenOptions::new()
+        let mut expected_file = OpenOptions::new()
             .read(true)
             .open("../datasets/weather_stations_agg.csv")
             .unwrap();
-        let expected_reader = Box::new(BufReader::new(expected_file));
-        let expected = TableFull::from_csv(expected_reader, ";").unwrap();
+        let mut expected_result: Vec<u8> = Vec::new();
+        expected_file.read_to_end(&mut expected_result).unwrap();
 
-        assert_eq!(result.headers, expected.headers);
-        assert_eq!(result.strings, expected.strings);
-        assert_eq!(result.numerics, expected.numerics);
+        assert_eq!(
+            result.to_csv(";"),
+            String::from_utf8(expected_result).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_polars_agg() {
+        let test_file = Path::new("../datasets/weather_stations.csv");
+        let result = agg_csv(&test_file, "measurement", b';', Some("location"), true).unwrap();
+
+        let mut expected_file = OpenOptions::new()
+            .read(true)
+            .open("../datasets/weather_stations_agg.csv")
+            .unwrap();
+        let mut expected_result: Vec<u8> = Vec::new();
+        expected_file.read_to_end(&mut expected_result).unwrap();
+
+        assert_eq!(
+            String::from_utf8(result).unwrap(),
+            String::from_utf8(expected_result).unwrap()
+        );
     }
 }

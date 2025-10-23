@@ -27,3 +27,4 @@ for i in range(3):
         pos += 1
 
 plt.show()
+

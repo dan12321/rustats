@@ -23,10 +23,10 @@ pub struct PcaArgs {
 }
 
 pub fn pca_main(args: PcaArgs) {
-    let reader: Box<dyn BufRead> = match util::get_buff_reader(&args.filename) {
+    let reader: Box<dyn BufRead> = match util::get_buff_reader(args.filename.as_ref()) {
         Ok(br) => br,
         Err(e) => {
-            eprintln!("Could not read file due to error: {}", e);
+            eprintln!("Could not read file due to error: {e}");
             return;
         }
     };
@@ -37,7 +37,7 @@ pub fn pca_main(args: PcaArgs) {
         match util::DataType::from_filename(&f) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("{}", e);
+                eprintln!("{e}");
                 return;
             }
         }
@@ -52,14 +52,14 @@ pub fn pca_main(args: PcaArgs) {
     let mut table = match table {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("Error parsing data: {}", e);
+            eprintln!("Error parsing data: {e}");
             return;
         }
     };
     match table.pca(args.round_places) {
         Ok(()) => (),
         Err(e) => {
-            eprintln!("Error calculating pca: {}", e);
+            eprintln!("Error calculating pca: {e}");
             return;
         }
     }
