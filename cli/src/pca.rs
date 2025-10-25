@@ -22,7 +22,7 @@ pub struct PcaArgs {
     csv_delim: String,
 }
 
-pub fn pca_main(args: PcaArgs) {
+pub async fn pca_main(args: PcaArgs) {
     let reader: Box<dyn BufRead> = match util::get_buff_reader(args.filename.as_ref()) {
         Ok(br) => br,
         Err(e) => {

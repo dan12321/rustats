@@ -34,7 +34,7 @@ pub struct HistArgs {
     filename: Option<PathBuf>,
 }
 
-pub fn hist_main(args: HistArgs) {
+pub async fn hist_main(args: HistArgs) {
     let reader: Box<dyn BufRead> = match util::get_buff_reader(args.filename.as_ref()) {
         Ok(br) => br,
         Err(e) => {

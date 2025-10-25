@@ -40,7 +40,7 @@ pub struct AggArgs {
     filename: Option<PathBuf>,
 }
 
-pub fn agg_main(args: AggArgs) {
+pub async fn agg_main(args: AggArgs) {
     if args.polars {
         let g = args.group_by.as_deref();
         let result = stats::table::agg_csv(

@@ -2,11 +2,14 @@ mod agg;
 mod hist;
 mod pca;
 mod util;
+mod plot;
+mod tui;
 
 use agg::AggArgs;
 use clap::{Parser, Subcommand};
 use hist::HistArgs;
 use pca::PcaArgs;
+use plot::PlotArgs;
 
 /// Tools for Stats
 #[derive(Debug, Parser)]
@@ -31,13 +34,19 @@ enum Tool {
     /// Histogram
     #[command(version, about, long_about = None)]
     Hist(HistArgs),
+
+    /// Plot
+    #[command(version, about, long_about = None)]
+    Plot(PlotArgs),
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
     match cli.tool {
-        Tool::Pca(args) => pca::pca_main(args),
-        Tool::Agg(args) => agg::agg_main(args),
-        Tool::Hist(args) => hist::hist_main(args),
+        Tool::Pca(args) => pca::pca_main(args).await,
+        Tool::Agg(args) => agg::agg_main(args).await,
+        Tool::Hist(args) => hist::hist_main(args).await,
+        Tool::Plot(args) => plot::plot_main(args).await,
     }
 }
