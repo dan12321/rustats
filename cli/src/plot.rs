@@ -6,7 +6,7 @@ use polars::prelude::*;
 
 use crate::tui::{self, events::PlotChartData};
 use crate::util::DataType;
-use tui::events::{TermEvent, UiCommand};
+use tui::events::UiCommand;
 
 /// Plot
 #[derive(Debug, Args)]
