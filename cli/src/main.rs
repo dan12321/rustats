@@ -1,9 +1,9 @@
 mod agg;
 mod hist;
 mod pca;
-mod util;
 mod plot;
 mod tui;
+mod util;
 
 use agg::AggArgs;
 use clap::{Parser, Subcommand};

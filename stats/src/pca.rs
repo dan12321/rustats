@@ -14,4 +14,3 @@ pub fn pca(data: Matrix, round_places: Option<i32>) -> Result<Matrix> {
     }
     Ok(pca)
 }
-

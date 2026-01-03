@@ -8,10 +8,10 @@ pub fn sorted_insert<T: Ord>(sorted_vec: &mut Vec<T>, value: T) {
         match value.cmp(&sorted_vec[middle]) {
             Ordering::Less => {
                 max = middle;
-            },
+            }
             Ordering::Greater => {
                 min = middle + 1;
-            },
+            }
             Ordering::Equal => {
                 sorted_vec.insert(middle, value);
                 return;

@@ -592,4 +592,3 @@ mod tests {
         assert_eq!(eigen_vectors.round(3), expected_result);
     }
 }
-

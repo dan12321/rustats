@@ -1,7 +1,7 @@
-use ratatui::{self, symbols};
+use ratatui::prelude::{Buffer, Rect};
 use ratatui::style::{Style, Stylize};
-use ratatui::widgets::{Block, Widget, Chart, Axis, Dataset, GraphType};
-use ratatui::prelude::{BlockExt, Buffer, Rect};
+use ratatui::widgets::{Axis, Block, Chart, Dataset, GraphType, Widget};
+use ratatui::{self, symbols};
 
 #[derive(Debug)]
 pub enum UiChart<'a> {
@@ -67,14 +67,12 @@ impl Widget for &ScatterPlot<'_> {
     where
         Self: Sized,
     {
-        let datasets = vec![
-            Dataset::default()
-                .name(self.name.as_str())
-                .marker(symbols::Marker::Dot)
-                .graph_type(GraphType::Scatter)
-                .style(Style::default().red())
-                .data(&self.points),
-        ];
+        let datasets = vec![Dataset::default()
+            .name(self.name.as_str())
+            .marker(symbols::Marker::Dot)
+            .graph_type(GraphType::Scatter)
+            .style(Style::default().red())
+            .data(&self.points)];
 
         let x_axis = Axis::default()
             .title(self.x_axis.as_str().red())
@@ -101,5 +99,9 @@ fn get_labels(bounds: &(f64, f64)) -> [String; 3] {
     let lower_bound = bounds.0;
     let upper_bound = bounds.1;
     let mid = (lower_bound + upper_bound) / 2.0;
-    [lower_bound.to_string(), mid.to_string(), upper_bound.to_string()]
+    [
+        lower_bound.to_string(),
+        mid.to_string(),
+        upper_bound.to_string(),
+    ]
 }

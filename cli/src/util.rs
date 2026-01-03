@@ -59,4 +59,3 @@ impl Display for DataTypeError {
 }
 
 impl Error for DataTypeError {}
-

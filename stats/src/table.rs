@@ -1000,14 +1000,7 @@ mod tests {
     #[test]
     fn test_polars_agg() {
         let test_file = Path::new("../datasets/weather_stations.csv");
-        let result = agg_csv(
-            &test_file,
-            "measurement",
-            b';',
-            Some("location"),
-            true,
-            0,
-        ).unwrap();
+        let result = agg_csv(&test_file, "measurement", b';', Some("location"), true, 0).unwrap();
 
         let mut expected_file = OpenOptions::new()
             .read(true)

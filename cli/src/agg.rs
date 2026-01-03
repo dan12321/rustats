@@ -50,7 +50,8 @@ pub async fn agg_main(args: AggArgs) {
             g,
             args.sort,
             args.precision,
-        ).unwrap();
+        )
+        .unwrap();
 
         println!("{}", String::from_utf8(result).unwrap());
         return;
@@ -117,5 +118,8 @@ pub async fn agg_main(args: AggArgs) {
             return;
         }
     };
-    println!("{}", agg.to_csv(&args.csv_delim.to_string(), args.precision));
+    println!(
+        "{}",
+        agg.to_csv(&args.csv_delim.to_string(), args.precision)
+    );
 }

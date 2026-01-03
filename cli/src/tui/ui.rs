@@ -92,9 +92,7 @@ impl Widget for &Ui<'_> {
     where
         Self: Sized,
     {
-
-        let block = Block::bordered()
-            .title_top("rustats");
+        let block = Block::bordered().title_top("rustats");
         if let Some(chart) = self.chart.as_ref() {
             match chart {
                 UiChart::ScatterPlot(p) => {

@@ -1,9 +1,6 @@
-use std::{io::BufRead, path::PathBuf};
+use std::path::PathBuf;
 
-use anyhow::Result;
 use clap::{Args, ValueEnum};
-use ndarray::Axis;
-use polars::frame::row::Row;
 use polars::io::SerReader;
 use polars::prelude::*;
 
@@ -70,28 +67,41 @@ pub async fn plot_main(args: PlotArgs) {
                 return;
             }
         };
-        let x_min = data.column("x_min")
+        let x_min = data
+            .column("x_min")
             .and_then(|v| v.f64())
-            .map(|v| v.first()).unwrap().unwrap();
-        let x_max = data.column("x_max")
+            .map(|v| v.first())
+            .unwrap()
+            .unwrap();
+        let x_max = data
+            .column("x_max")
             .and_then(|v| v.f64())
-            .map(|v| v.first()).unwrap().unwrap();
-        let y_min = data.column("y_min")
+            .map(|v| v.first())
+            .unwrap()
+            .unwrap();
+        let y_min = data
+            .column("y_min")
             .and_then(|v| v.f64())
-            .map(|v| v.first()).unwrap().unwrap();
-        let y_max = data.column("y_max")
+            .map(|v| v.first())
+            .unwrap()
+            .unwrap();
+        let y_max = data
+            .column("y_max")
             .and_then(|v| v.f64())
-            .map(|v| v.first()).unwrap().unwrap();
+            .map(|v| v.first())
+            .unwrap()
+            .unwrap();
         let arr = data.to_ndarray::<Float64Type>(IndexOrder::C).unwrap();
-        let arr = arr.rows().into_iter()
-            .map(|r| (r[0], r[1]))
-            .collect();
-        ui_sender.send(UiEvent::ChartData(PlotChartData {
-            args,
-            x_bounds: (x_min.floor(), x_max.ceil()),
-            y_bounds: (y_min.floor(), y_max.ceil()),
-            points: arr,
-        })).await.unwrap();
+        let arr = arr.rows().into_iter().map(|r| (r[0], r[1])).collect();
+        ui_sender
+            .send(UiEvent::ChartData(PlotChartData {
+                args,
+                x_bounds: (x_min.floor(), x_max.ceil()),
+                y_bounds: (y_min.floor(), y_max.ceil()),
+                points: arr,
+            }))
+            .await
+            .unwrap();
     }
 
     let mut exit = false;
