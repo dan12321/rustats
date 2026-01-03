@@ -415,6 +415,8 @@ dependencies = [
  "anyhow",
  "clap",
  "crossterm 0.29.0",
+ "ndarray",
+ "polars",
  "ratatui",
  "stats",
  "tokio",

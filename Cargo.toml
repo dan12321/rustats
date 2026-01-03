@@ -9,4 +9,6 @@ version = "0.1.0"
 anyhow = "1.0.86"
 tracing = "0.1"
 tokio = { version = "1.48.0", features = ["full"] }
+polars = {version = "0.49", features = ["lazy", "ndarray", "nightly", "performant"]}
+ndarray = "0.16.1"
 
