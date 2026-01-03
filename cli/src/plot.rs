@@ -6,7 +6,7 @@ use polars::prelude::*;
 
 use crate::tui::{self, events::PlotChartData};
 use crate::util::DataType;
-use tui::events::{TermEvent, UiEvent};
+use tui::events::{TermEvent, UiCommand};
 
 /// Plot
 #[derive(Debug, Args)]
@@ -30,13 +30,13 @@ pub enum PlotType {
 }
 
 pub async fn plot_main(args: PlotArgs) {
-    let (ui_sender, ui_receiver) = tokio::sync::mpsc::channel::<UiEvent>(64);
+    let (ui_sender, ui_receiver) = tokio::sync::mpsc::channel::<UiCommand>(64);
     // UI should run on it's own thread to avoid becoming unresponsive
     let ui_thread = tokio::task::spawn_blocking(|| tui::ui::run(ui_receiver));
 
-    let (term_event_sender, mut term_event_receiver) = tokio::sync::mpsc::channel::<TermEvent>(64);
+    let term_ui_sender = ui_sender.clone();
     let term_event_thread =
-        tokio::task::spawn_blocking(|| tui::events::start_listening(term_event_sender));
+        tokio::task::spawn_blocking(|| tui::events::start_listening(term_ui_sender));
     if let Some(filename) = &args.filename {
         let csv_result = CsvReadOptions::default()
             .with_has_header(true)
@@ -67,34 +67,16 @@ pub async fn plot_main(args: PlotArgs) {
                 return;
             }
         };
-        let x_min = data
-            .column("x_min")
-            .and_then(|v| v.f64())
-            .map(|v| v.first())
-            .unwrap()
-            .unwrap();
-        let x_max = data
-            .column("x_max")
-            .and_then(|v| v.f64())
-            .map(|v| v.first())
-            .unwrap()
-            .unwrap();
-        let y_min = data
-            .column("y_min")
-            .and_then(|v| v.f64())
-            .map(|v| v.first())
-            .unwrap()
-            .unwrap();
-        let y_max = data
-            .column("y_max")
-            .and_then(|v| v.f64())
-            .map(|v| v.first())
-            .unwrap()
-            .unwrap();
+        let x_min = get_f64_scalar(&data, "x_min");
+        let x_max = get_f64_scalar(&data, "x_max");
+        let y_min = get_f64_scalar(&data, "y_min");
+        let y_max = get_f64_scalar(&data, "y_max");
         let arr = data.to_ndarray::<Float64Type>(IndexOrder::C).unwrap();
-        let arr = arr.rows().into_iter().map(|r| (r[0], r[1])).collect();
+        let arr = arr.rows().into_iter()
+            .map(|r| (r[0], r[1]))
+            .collect();
         ui_sender
-            .send(UiEvent::ChartData(PlotChartData {
+            .send(UiCommand::ChartData(PlotChartData {
                 args,
                 x_bounds: (x_min.floor(), x_max.ceil()),
                 y_bounds: (y_min.floor(), y_max.ceil()),
@@ -104,21 +86,13 @@ pub async fn plot_main(args: PlotArgs) {
             .unwrap();
     }
 
-    let mut exit = false;
-    while !exit && !ui_sender.is_closed() {
-        match term_event_receiver.recv().await {
-            Some(TermEvent::Quit) => {
-                ui_sender.send(UiEvent::Exit).await.unwrap();
-                term_event_receiver.close();
-                exit = true;
-            }
-            None => {
-                ui_sender.send(UiEvent::Exit).await.unwrap();
-                term_event_receiver.close();
-                exit = true
-            }
-        }
-    }
-
     let _ = tokio::join!(ui_thread, term_event_thread);
+}
+
+fn get_f64_scalar(data: &DataFrame, col: &str) -> f64 {
+    data.column(col)
+        .and_then(|v| v.f64())
+        .map(|v| v.first())
+        .unwrap()
+        .unwrap()
 }

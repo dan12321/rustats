@@ -7,13 +7,13 @@ use ratatui::{DefaultTerminal, Frame};
 use tokio::sync::mpsc::Receiver;
 
 use crate::tui::charts::{ScatterPlot, UiChart};
-use crate::tui::events::PlotChartData;
+use crate::tui::events::{PlotChartData, TermEvent};
 
-use super::events::UiEvent;
+use super::events::UiCommand;
 
 #[derive(Debug)]
 pub struct Ui<'a> {
-    rx: Receiver<UiEvent>,
+    rx: Receiver<UiCommand>,
     state: UiState,
     chart: Option<UiChart<'a>>,
 }
@@ -26,7 +26,7 @@ enum UiState {
     Exit,
 }
 
-pub fn run(rx: Receiver<UiEvent>) -> io::Result<()> {
+pub fn run(rx: Receiver<UiCommand>) -> io::Result<()> {
     let mut terminal = ratatui::init();
     let app_result = Ui::new(rx).run(&mut terminal);
     ratatui::restore();
@@ -34,7 +34,7 @@ pub fn run(rx: Receiver<UiEvent>) -> io::Result<()> {
 }
 
 impl Ui<'_> {
-    pub fn new(rx: Receiver<UiEvent>) -> Self {
+    pub fn new(rx: Receiver<UiCommand>) -> Self {
         Ui {
             rx,
             state: UiState::New,
@@ -62,8 +62,8 @@ impl Ui<'_> {
         let n = self.rx.blocking_recv_many(&mut events, events_cap);
         for event in events {
             match event {
-                UiEvent::Exit => self.exit(),
-                UiEvent::ChartData(data) => self.handle_chart_data(data),
+                UiCommand::TermEvent(te) => self.handle_term_event(te),
+                UiCommand::ChartData(data) => self.handle_chart_data(data),
             }
         }
         if n == 0 && matches!(self.state, UiState::Exiting) {
@@ -71,7 +71,15 @@ impl Ui<'_> {
         }
     }
 
+    fn handle_term_event(&mut self, te: TermEvent) {
+        match te {
+            TermEvent::Quit => self.exit(),
+        }
+    }
+
     fn exit(&mut self) {
+        // TODO!: Give other threads a chance to finish before closing
+        // then close on finish/force exit
         self.rx.close();
         self.state = UiState::Exiting;
     }

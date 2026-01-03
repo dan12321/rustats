@@ -5,11 +5,11 @@ use tokio::sync::mpsc::Sender;
 
 use crate::plot::PlotArgs;
 
-/// Events to send to the UI
+/// Commands to send to the UI
 #[derive(Debug)]
-pub enum UiEvent {
+pub enum UiCommand {
     ChartData(PlotChartData),
-    Exit,
+    TermEvent(TermEvent),
 }
 
 #[derive(Debug)]
@@ -26,18 +26,21 @@ pub enum TermEvent {
     Quit,
 }
 
-pub fn start_listening(sender: Sender<TermEvent>) {
+pub fn start_listening(sender: Sender<UiCommand>) {
     // Automatically drop if last receiver is closed/dropped.
     while !sender.is_closed() {
-        match read_event() {
-            Ok(e) => {
-                if let Some(ev) = e {
-                    if let Some(err) = sender.blocking_send(ev).err() {
-                        eprintln!("Failed to send term event: {err}");
-                    };
-                }
-            }
-            Err(e) => eprintln!("Failed to read event: {e}"),
+        let event = match read_event() {
+            Ok(te) => te,
+            Err(e) => {
+                eprintln!("Failed to read event: {e}");
+                continue;
+            },
+        };
+        if let Some(te) = event {
+            let res = sender.blocking_send(UiCommand::TermEvent(te));
+            if let Err(e) = res {
+                eprintln!("Failed to send term event: {e}");
+            };
         }
     }
 }
